@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+contracts/out/
+contracts/cache/
+
+# Environment secrets — never commit these
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Database
+*.db
+
+# Misc
+.DS_Store
+*.log
+.vercel
+.turbo
