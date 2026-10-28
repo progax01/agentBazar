@@ -137,3 +137,87 @@ export interface HealthResponse {
   rpc:      boolean;
   chainId:  number | null;
 }
+
+// ---------------------------------------------------------------------------
+// Payment Router
+// ---------------------------------------------------------------------------
+
+export type PaymentMode = "x402" | "gateway_nanopayment" | "escrow";
+
+export interface PaymentReceipt {
+  mode:             PaymentMode;
+  network:          string;
+  amountUsdc:       string;
+  payerAddress?:    string;
+  payToAddress?:    string;
+  transactionHash?: string;
+  status:           string;
+  facilitator?:     string;
+}
+
+export type ServicePaymentStatus =
+  | "pending"
+  | "quote_received"
+  | "authorization_created"
+  | "payment_verified"
+  | "executing"
+  | "gateway_accepted"
+  | "settlement_pending"
+  | "settled"
+  | "failed";
+
+export interface Service {
+  id:              string;
+  name:            string;
+  description:     string;
+  agentId:         string;
+  endpointUrl:     string;
+  endpointMethod:  string;
+  paymentMode:     PaymentMode;
+  network:         string;
+  assetAddress:    string;
+  priceRaw:        string;
+  priceUsdc:       string;
+  payToAddress:    string;
+  facilitatorUrl:  string;
+  isActive:        boolean;
+  capabilities:    string[];
+  createdAt:       string;
+}
+
+export interface ServicePayment {
+  id:               string;
+  taskId:           string | null;
+  buyerAgentId:     string;
+  providerAgentId:  string;
+  serviceId:        string;
+  serviceName?:     string;
+  paymentMode:      PaymentMode;
+  network:          string;
+  assetAddress:     string;
+  amountRaw:        string;
+  payToAddress:     string;
+  status:           ServicePaymentStatus;
+  facilitator:      string | null;
+  txHash:           string | null;
+  httpStatus:       number | null;
+  resultReference:  string | null;
+  errorMessage:     string | null;
+  createdAt:        string;
+  settledAt:        string | null;
+}
+
+export interface InvokeServiceRequest {
+  serviceId:          string;
+  taskId?:            string;
+  maxPerPaymentUsdc:  string;
+  budgetUsdc:         string;
+}
+
+export interface InvokeServiceResponse {
+  paymentId:  string;
+  status:     ServicePaymentStatus;
+  receipt?:   PaymentReceipt;
+  data?:      unknown;
+  error?:     string;
+}
