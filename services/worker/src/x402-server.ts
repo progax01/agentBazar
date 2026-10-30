@@ -47,6 +47,15 @@ async function startX402Server() {
   resourceServer.register(NETWORK, new ExactEvmScheme());
 
   // ── Route price config ───────────────────────────────────────────────────
+  // Backward-compat: old DB records reference /api/paid/analysis-capabilities;
+  // register both the canonical path and the legacy alias at the same price.
+  const capabilityAccepts = [{
+    scheme: "exact", network: NETWORK, payTo,
+    price: "0.01",   // 0.01 USDC for capability manifest
+    asset: USDC,
+    extra: { name: "USDC", version: "2" },
+  }];
+
   const routes = {
     "POST /api/paid/audit": {
       accepts: [{
@@ -57,12 +66,11 @@ async function startX402Server() {
       }],
     },
     "GET /api/paid/capabilities": {
-      accepts: [{
-        scheme: "exact", network: NETWORK, payTo,
-        price: "0.01",   // 0.01 USDC for capability manifest
-        asset: USDC,
-        extra: { name: "USDC", version: "2" },
-      }],
+      accepts: capabilityAccepts,
+    },
+    // Legacy alias kept for existing DB service records
+    "GET /api/paid/analysis-capabilities": {
+      accepts: capabilityAccepts,
     },
   };
 
@@ -140,6 +148,24 @@ async function startX402Server() {
         verdicts:  { PASS: "score >= 70", REVIEW_REQUIRED: "score >= 40", FAIL: "score < 40" },
         penalties: { critical: 40, high: 20, medium: 8, low: 2, info: 0 },
       },
+    });
+  });
+
+  // ── GET /api/paid/analysis-capabilities — legacy alias (paid, 0.01 USDC) ─
+  // Existing DB service records may still reference this older path.
+  app.get("/api/paid/analysis-capabilities", (_req: Request, res: Response) => {
+    res.json({
+      serviceId:           "agetbazar-solidity-audit",
+      version:             "2.0.0",
+      schemaVersion:       2,
+      network:             NETWORK,
+      facilitator:         FACILITATOR_URL,
+      note:                "This path is a legacy alias. Canonical: GET /api/paid/capabilities",
+      capabilities: [
+        "solidity-security-audit", "blockrun-ai-analysis",
+        "slither-static-analysis", "solc-compilation-check",
+        "finding-correlation", "risk-scoring",
+      ],
     });
   });
 

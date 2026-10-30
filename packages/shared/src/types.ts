@@ -300,6 +300,8 @@ export interface InvokeServiceRequest {
   taskId?:            string;
   maxPerPaymentUsdc:  string;
   budgetUsdc:         string;
+  /** Arbitrary input forwarded as the POST body to the paid endpoint (e.g. { sourceCode }) */
+  input?:             Record<string, unknown>;
 }
 
 export interface InvokeServiceResponse {

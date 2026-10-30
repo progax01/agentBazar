@@ -178,7 +178,7 @@ export async function invokeService(
     invokeResult = await adapter.invoke(
       service.endpointUrl,
       service.endpointMethod,
-      null,
+      request.input ?? null,
       { maxPerPaymentUsdc: request.maxPerPaymentUsdc, budgetUsdc: request.budgetUsdc },
     );
   } catch (err) {
