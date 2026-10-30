@@ -16,7 +16,8 @@
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./*"],
-      "@agetbazar/shared": ["../../packages/shared/src/index.ts"]
+      "@agetbazar/shared": ["../../packages/shared/src/index.ts"],
+      "@worker/*": ["../../services/worker/src/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

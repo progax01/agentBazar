@@ -1,163 +1,167 @@
 /**
  * x402 paid Express server — provider/seller side.
  *
- * Uses the ACTUAL @x402/express + @x402/evm/exact/server exports
- * (verified against the installed 2.28.0 packages).
+ * Paid endpoints (all settled in USDC via Arcus facilitator):
+ *   POST /api/paid/audit          — 0.50 USDC — runs full AuditOrchestrator pipeline
+ *   GET  /api/paid/capabilities   — 0.01 USDC — returns capability manifest
+ *
+ * Free endpoints:
+ *   GET  /health
  *
  * Env vars required:
- *   PROVIDER_PAY_TO          — EVM address that receives USDC per call
- *   ARC_USDC_ADDRESS         — defaults to Arc Testnet USDC
- *   ARC_NETWORK              — defaults to eip155:5042002
- *   X402_SERVER_PORT         — defaults to 4021
+ *   PROVIDER_PAY_TO   — EVM address receiving USDC per call
+ *   ARC_NETWORK       — defaults to eip155:5042002
+ *   ARC_USDC_ADDRESS  — defaults to Arc Testnet USDC
  */
 import express from "express";
 import type { Request, Response } from "express";
+import { runAudit } from "./audit-orchestrator";
 
-const PORT             = parseInt(process.env.X402_SERVER_PORT ?? "4021");
-const NETWORK          = process.env.ARC_NETWORK ?? "eip155:5042002";
+const PORT            = parseInt(process.env.X402_SERVER_PORT ?? "4021");
+const NETWORK         = process.env.ARC_NETWORK ?? "eip155:5042002";
 // arc-studio-allow-onchain-literal — Arc Testnet USDC, public constant
-const USDC             = process.env.ARC_USDC_ADDRESS ?? "0x3600000000000000000000000000000000000000";
-const FACILITATOR_URL  = "https://facilitator.arcusnetwork.co";
+const USDC            = process.env.ARC_USDC_ADDRESS ?? "0x3600000000000000000000000000000000000000";
+const FACILITATOR_URL = "https://facilitator.arcusnetwork.co";
 
 async function startX402Server() {
   const payTo = process.env.PROVIDER_PAY_TO?.trim();
   if (!payTo) {
     console.error("[x402-server] ❌  PROVIDER_PAY_TO is not set.");
-    console.error("[x402-server]     Set it to your provider agent wallet address in services/worker/.env");
     process.exit(1);
   }
 
   // ── Import packages (verified exports for @x402/* v2.28.0) ──────────────
-  // paymentMiddleware + x402ResourceServer live in @x402/express
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { paymentMiddleware, x402ResourceServer } = require("@x402/express") as {
     paymentMiddleware:  (...args: unknown[]) => express.RequestHandler;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     x402ResourceServer: new (facilitators?: unknown) => any;
   };
-
-  // HTTPFacilitatorClient lives in @x402/core/http (NOT the root @x402/core export)
   // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
   const { HTTPFacilitatorClient } = require("@x402/core/http") as { HTTPFacilitatorClient: new (opts: { url: string }) => any };
-
-  // Server-side verifier scheme lives at @x402/evm/exact/server
   // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
   const { ExactEvmScheme } = require("@x402/evm/exact/server") as { ExactEvmScheme: new () => any };
 
-  // ── Build resource server ────────────────────────────────────────────────
   const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
   const resourceServer    = new x402ResourceServer([facilitatorClient]);
   resourceServer.register(NETWORK, new ExactEvmScheme());
 
   // ── Route price config ───────────────────────────────────────────────────
-  // `price` must be a decimal USDC string (e.g. "0.01"), not a raw integer.
-  // `asset` is the ERC-20 token address.
-  // `accepts` is an array of payment requirement objects.
   const routes = {
-    "GET /api/paid/analysis-capabilities": {
-      accepts: [
-        {
-          scheme:  "exact",
-          network: NETWORK,
-          payTo,
-          price:   "0.01",   // 0.01 USDC
-          asset:   USDC,
-          extra:   { name: "USDC", version: "2" },
-        },
-      ],
+    "POST /api/paid/audit": {
+      accepts: [{
+        scheme: "exact", network: NETWORK, payTo,
+        price: "0.50",   // 0.50 USDC per full audit
+        asset: USDC,
+        extra: { name: "USDC", version: "2" },
+      }],
     },
-    "GET /api/paid/analysis-report-schema": {
-      accepts: [
-        {
-          scheme:  "exact",
-          network: NETWORK,
-          payTo,
-          price:   "0.05",   // 0.05 USDC
-          asset:   USDC,
-          extra:   { name: "USDC", version: "2" },
-        },
-      ],
+    "GET /api/paid/capabilities": {
+      accepts: [{
+        scheme: "exact", network: NETWORK, payTo,
+        price: "0.01",   // 0.01 USDC for capability manifest
+        asset: USDC,
+        extra: { name: "USDC", version: "2" },
+      }],
     },
   };
 
   // ── Express app ──────────────────────────────────────────────────────────
   const app = express();
-  app.use(express.json());
-
-  // x402 middleware intercepts the protected routes and verifies/settles payment.
+  app.use(express.json({ limit: "500kb" }));
   app.use(paymentMiddleware(routes, resourceServer));
 
-  // ── Paid endpoints (only reached after payment verified) ─────────────────
-  app.get("/api/paid/analysis-capabilities", (_req: Request, res: Response) => {
-    res.json({
-      serviceId:          "solidity-report-api",
-      version:            "1.0.0",
-      network:            NETWORK,
-      facilitator:        FACILITATOR_URL,
-      capabilities: [
-        "solidity-source-report",
-        "reentrancy-detection",
-        "access-control-audit",
-        "compiler-warning-surfacing",
-        "ast-pattern-analysis",
-      ],
-      checks: [
-        "reentrancy",
-        "tx-origin-auth",
-        "delegatecall-usage",
-        "selfdestruct-usage",
-        "block-timestamp-dependence",
-        "integer-overflow-underflow",
-        "unprotected-public-function",
-        "missing-zero-address-check",
-        "unchecked-block",
-        "assembly-usage",
-        "floating-pragma",
-        "transfer-send-limitation",
-        "arbitrary-external-call",
-        "event-missing",
-        "magic-numbers",
-      ],
-      inputSchemaVersion:  1,
-      outputSchemaVersion: 1,
-      pricingUsdc: { "analysis-capabilities": "0.01", "analysis-report-schema": "0.05" },
-    });
+  // ── POST /api/paid/audit — Full audit (paid, 0.50 USDC) ─────────────────
+  app.post("/api/paid/audit", async (req: Request, res: Response) => {
+    const { sourceCode, taskId } = req.body as { sourceCode?: string; taskId?: string };
+
+    if (!sourceCode || typeof sourceCode !== "string" || sourceCode.trim().length < 10) {
+      res.status(400).json({ error: "sourceCode is required (min 10 chars)" });
+      return;
+    }
+
+    try {
+      const report = await runAudit({
+        sourceCode,
+        taskId,
+        entryPoint: "x402_service",
+        onProgress: (evt) =>
+          console.log(`[x402-server][audit] ${evt.stage}: ${evt.message}`),
+      });
+
+      res.json({
+        ok:           true,
+        auditId:      report.auditId,
+        score:        report.score,
+        verdict:      report.verdict,
+        summary:      report.summary,
+        counts:       report.counts,
+        findings:     report.findings,
+        coverage:     report.coverage,
+        blockrunReceipt: report.blockrunReceipt,
+        schemaVersion: report.schemaVersion,
+        createdAt:    report.createdAt,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[x402-server] Audit error:", msg);
+      res.status(500).json({ error: `Audit failed: ${msg}` });
+    }
   });
 
-  app.get("/api/paid/analysis-report-schema", (_req: Request, res: Response) => {
+  // ── GET /api/paid/capabilities — capability manifest (paid, 0.01 USDC) ──
+  app.get("/api/paid/capabilities", (_req: Request, res: Response) => {
     res.json({
-      schemaVersion: 1,
-      fields: {
-        compilerStatus: "string — ok | warning | error",
-        compilerOutput: "string | null",
-        toolName: "string",
-        toolVersion: "string",
-        findings: {
-          type:  "array",
-          items: {
-            severity:    "critical | high | medium | low | info",
-            title:       "string",
-            description: "string",
-            line:        "number | null",
-            context:     "string | null",
-          },
-        },
-        counts: { type: "object", keys: ["critical","high","medium","low","info","total"] },
-        summary: "string",
+      serviceId:           "agetbazar-solidity-audit",
+      version:             "2.0.0",
+      schemaVersion:       2,
+      network:             NETWORK,
+      facilitator:         FACILITATOR_URL,
+      pricingUsdc: {
+        "POST /api/paid/audit":         "0.50",
+        "GET  /api/paid/capabilities":  "0.01",
+      },
+      capabilities: [
+        "solidity-security-audit",
+        "blockrun-ai-analysis",
+        "slither-static-analysis",
+        "solc-compilation-check",
+        "finding-correlation",
+        "risk-scoring",
+      ],
+      detectors: [
+        "reentrancy", "tx-origin-auth", "delegatecall-usage", "selfdestruct",
+        "timestamp-dependence", "assembly-usage", "unchecked-arithmetic",
+        "floating-pragma", "missing-zero-address-check", "unguarded-function",
+        "compiler-warning", "transfer-limitation",
+      ],
+      scoringPolicy: {
+        version:   "v1",
+        verdicts:  { PASS: "score >= 70", REVIEW_REQUIRED: "score >= 40", FAIL: "score < 40" },
+        penalties: { critical: 40, high: 20, medium: 8, low: 2, info: 0 },
       },
     });
   });
 
-  // ── Free endpoints ────────────────────────────────────────────────────────
+  // ── GET /health — free ───────────────────────────────────────────────────
   app.get("/health", (_req: Request, res: Response) => {
-    res.json({ status: "ok", network: NETWORK, facilitator: FACILITATOR_URL, payTo });
+    res.json({
+      status:      "ok",
+      network:     NETWORK,
+      facilitator: FACILITATOR_URL,
+      payTo,
+      endpoints: {
+        "POST /api/paid/audit":        "0.50 USDC",
+        "GET  /api/paid/capabilities": "0.01 USDC",
+      },
+    });
   });
 
   app.listen(PORT, () => {
     console.log(`[x402-server] ✅  Listening on port ${PORT}`);
-    console.log(`[x402-server]    Paid: GET http://localhost:${PORT}/api/paid/analysis-capabilities (0.01 USDC)`);
-    console.log(`[x402-server]    Paid: GET http://localhost:${PORT}/api/paid/analysis-report-schema (0.05 USDC)`);
-    console.log(`[x402-server]    Free: GET http://localhost:${PORT}/health`);
+    console.log(`[x402-server]    Paid: POST http://localhost:${PORT}/api/paid/audit (0.50 USDC)`);
+    console.log(`[x402-server]    Paid: GET  http://localhost:${PORT}/api/paid/capabilities (0.01 USDC)`);
+    console.log(`[x402-server]    Free: GET  http://localhost:${PORT}/health`);
     console.log(`[x402-server]    Network: ${NETWORK} | Pay-to: ${payTo}`);
   });
 }

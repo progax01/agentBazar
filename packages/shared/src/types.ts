@@ -1,6 +1,94 @@
 import type { AppStatusType } from "./status";
 
 // ---------------------------------------------------------------------------
+// Audit Engine v2 types (schemaVersion: 2)
+// ---------------------------------------------------------------------------
+
+export type AuditSeverity = "critical" | "high" | "medium" | "low" | "info";
+export type FindingOrigin  = "tool_confirmed" | "ai_identified" | "corroborated" | "unverified";
+export type AuditVerdict   = "PASS" | "REVIEW_REQUIRED" | "FAIL";
+
+export interface AuditFinding {
+  id:              string;
+  severity:        AuditSeverity;
+  origin:          FindingOrigin;
+  detectorId?:     string;
+  title:           string;
+  description:     string;
+  line?:           number | null;
+  context?:        string;
+  exploitScenario?: string;
+  remediation?:    string;
+  confidence?:     string;
+}
+
+export interface ScoreBreakdown {
+  baseScore:    number;
+  totalPenalty: number;
+  findings:     Array<{
+    findingId: string;
+    title:     string;
+    severity:  AuditSeverity;
+    penalty:   number;
+  }>;
+}
+
+export interface BlockRunReceipt {
+  gateway:    string;
+  network:    string;
+  model:      string;
+  amountUsdc: string;
+  txHash?:    string;
+  tokensUsed?: number;
+  latencyMs:  number;
+  settledAt:  string;
+}
+
+export interface ToolCoverage {
+  solc: {
+    ran:      boolean;
+    version:  string;
+    compiled: boolean;
+    findings: number;
+  };
+  slither: {
+    ran:       boolean;
+    installed: boolean;
+    detectors: string[];
+    findings:  number;
+  };
+  blockrunAi: {
+    ran:        boolean;
+    gateway:    string;
+    model:      string;
+    findings:   number;
+    skipped:    boolean;
+    skipReason?: string;
+  };
+}
+
+export interface AuditReport {
+  schemaVersion:        2;
+  auditId:              string;
+  taskId?:              string;
+  entryPoint:           "escrow_task" | "x402_service" | "analyze_page";
+  sourceHash:           string;
+  scoringPolicyVersion: string;
+  score:                number;
+  verdict:              AuditVerdict;
+  counts:               Record<AuditSeverity, number>;
+  findings:             AuditFinding[];
+  scoreBreakdown:       ScoreBreakdown;
+  coverage:             ToolCoverage;
+  solcVersion:          string;
+  compilerStatus:       "success" | "error" | "unavailable";
+  compilerOutput?:      string | null;
+  blockrunReceipt?:     BlockRunReceipt;
+  summary:              string;
+  createdAt:            string;
+}
+
+// ---------------------------------------------------------------------------
 // Agent
 // ---------------------------------------------------------------------------
 

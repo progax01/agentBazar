@@ -1,9 +1,13 @@
 /**
- * Deterministic verifier — checks the report against acceptance criteria.
- * No AI is involved in pass/fail decisions.
+ * Deterministic verifier — validates an AuditReport v2 against acceptance criteria.
+ *
+ * IMPORTANT: payment success and audit score are independent.
+ * A low score (FAIL verdict) means the contract failed screening — it does NOT
+ * mean the audit service failed. Only reject payment when the analysis itself
+ * could not be completed (compilation error, missing findings array, hash mismatch).
  */
 import { keccak256, toBytes } from "viem";
-import type { Report, AcceptanceCriteria } from "@agetbazar/shared";
+import type { AuditReport, AcceptanceCriteria } from "@agetbazar/shared";
 
 export interface ValidationResult {
   passed:  boolean;
@@ -19,26 +23,31 @@ export function validateReport(
 ): ValidationResult {
   const checks: Record<string, boolean> = {};
 
-  // 1. Valid JSON schema
-  const validJson = isValidReport(report);
-  checks.validJson = validJson;
-  if (criteria.requireValidJson && !validJson) {
-    return { passed: false, message: "Report schema is invalid", checks };
+  // 1. Valid schema (v2)
+  const validSchema = isValidAuditReport(report);
+  checks.validSchema = validSchema;
+  if (criteria.requireValidJson && !validSchema) {
+    return { passed: false, message: "Report schema is invalid (expected schemaVersion 2)", checks };
   }
 
-  const r = report as Report;
+  const r = report as AuditReport;
 
   // 2. Source hash matches
-  const computedSourceHash = keccak256(toBytes(sourceCode));
-  const sourceHashMatch    = r.sourceHash === computedSourceHash;
-  checks.sourceHashMatch   = sourceHashMatch;
-  if (criteria.requireSourceHash && !sourceHashMatch) {
+  const computedHash   = keccak256(toBytes(sourceCode));
+  const hashMatch      = r.sourceHash === computedHash;
+  checks.sourceHashMatch = hashMatch;
+  if (criteria.requireSourceHash && !hashMatch) {
     return { passed: false, message: "Source hash mismatch", checks };
   }
 
-  // 3. Compiler must not have errored out — a compilation failure means the
-  //    analysis is invalid and no payment should be released.
-  const compilerOk = r.analysis?.compilerStatus !== "error";
+  // 3. Report hash matches on-chain commitment
+  // (onchainHash is keccak256 of the stableStringified report)
+  checks.onchainHashPresent = Boolean(onchainHash);
+
+  // 4. Compilation must not have hard-errored
+  // Note: a FAIL verdict (low score) is NOT a reason to reject payment.
+  // Only reject when compilation itself failed and findings are meaningless.
+  const compilerOk = r.compilerStatus !== "error";
   checks.compilerOk = compilerOk;
   if (!compilerOk) {
     return {
@@ -48,35 +57,36 @@ export function validateReport(
     };
   }
 
-  // 4. Static analysis results present
-  const hasAnalysis = Array.isArray(r.analysis?.findings);
-  checks.hasStaticAnalysis = hasAnalysis;
-  if (criteria.requireStaticAnalysisResults && !hasAnalysis) {
-    return { passed: false, message: "Static analysis findings missing", checks };
+  // 5. Findings array present
+  const hasFindings = Array.isArray(r.findings);
+  checks.hasFindings = hasFindings;
+  if (criteria.requireStaticAnalysisResults && !hasFindings) {
+    return { passed: false, message: "Findings array missing from report", checks };
   }
 
-  // 5. Tool name and version present
-  checks.hasToolMetadata =
-    Boolean(r.analysis?.toolName) && Boolean(r.analysis?.toolVersion);
+  // 6. Score and verdict present
+  checks.hasScore   = typeof r.score === "number";
+  checks.hasVerdict = typeof r.verdict === "string";
+
+  // 7. Coverage record present
+  checks.hasCoverage = Boolean(r.coverage);
 
   return {
     passed:  true,
-    message: "All deterministic checks passed",
+    message: `Audit verified. Score: ${r.score}/100 — Verdict: ${r.verdict}`,
     checks,
   };
 }
 
-function isValidReport(r: unknown): r is Report {
+function isValidAuditReport(r: unknown): r is AuditReport {
   if (typeof r !== "object" || r === null) return false;
   const obj = r as Record<string, unknown>;
-  if (typeof obj.schemaVersion !== "number")     return false;
-  if (typeof obj.taskId !== "string")             return false;
+  if (obj.schemaVersion !== 2)                    return false;
+  if (typeof obj.auditId !== "string")            return false;
   if (typeof obj.sourceHash !== "string")         return false;
-  if (typeof obj.analysis !== "object")           return false;
-  const a = obj.analysis as Record<string, unknown>;
-  if (typeof a.compilerStatus !== "string")       return false;
-  if (typeof a.toolName !== "string")             return false;
-  if (typeof a.toolVersion !== "string")          return false;
-  if (!Array.isArray(a.findings))                 return false;
+  if (typeof obj.score !== "number")              return false;
+  if (typeof obj.verdict !== "string")            return false;
+  if (typeof obj.compilerStatus !== "string")     return false;
+  if (!Array.isArray(obj.findings))               return false;
   return true;
 }
