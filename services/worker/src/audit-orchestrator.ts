@@ -450,6 +450,7 @@ async function runBlockRunAI(
   let x402ClientCtor: (opts: unknown) => unknown;
   let ExactEvmSchemeCtor: new (acct: unknown) => unknown;
   let privateKeyToAccount: (k: `0x${string}`) => unknown;
+  let decodePaymentResponseHeader: (header: string) => { success: boolean; transaction?: string };
 
   try {
     // Dynamic import to avoid breaking startup when packages are absent
@@ -457,6 +458,7 @@ async function runBlockRunAI(
     const fetchPkg = require("@x402/fetch") as {
       wrapFetchWithPayment: typeof wrapFetchWithPayment;
       x402Client: { fromConfig: typeof x402ClientCtor };
+      decodePaymentResponseHeader: typeof decodePaymentResponseHeader;
     };
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const evmPkg = require("@x402/evm/exact/client") as { ExactEvmScheme: typeof ExactEvmSchemeCtor };
@@ -466,6 +468,7 @@ async function runBlockRunAI(
     x402ClientCtor = fetchPkg.x402Client.fromConfig;
     ExactEvmSchemeCtor = evmPkg.ExactEvmScheme;
     privateKeyToAccount = viemAccounts.privateKeyToAccount;
+    decodePaymentResponseHeader = fetchPkg.decodePaymentResponseHeader;
   } catch (e) {
     return { findings: [], skipped: true, skipReason: `x402 packages not available: ${String(e)}` };
   }
@@ -524,13 +527,24 @@ Respond with ONLY the JSON array, no other text.`;
     onProgress?.({ stage: "blockrun", message: `BlockRun responded with HTTP ${resp.status}` });
 
     const latencyMs = Date.now() - startMs;
-    const receiptHeader = resp.headers.get("X-Payment-Receipt") ?? resp.headers.get("x-payment-receipt");
+    const paymentResponseHeader = resp.headers.get("PAYMENT-RESPONSE") ??
+                                  resp.headers.get("X-PAYMENT-RESPONSE");
+    let paymentResponse: ReturnType<typeof decodePaymentResponseHeader> | undefined;
+    if (paymentResponseHeader) {
+      try {
+        paymentResponse = decodePaymentResponseHeader(paymentResponseHeader);
+      } catch {
+        // Keep the inference result even if the optional receipt header is malformed.
+      }
+    }
+    const receiptHeader = resp.headers.get("X-Payment-Receipt") ??
+      resp.headers.get("x-payment-receipt");
     const receipt: BlockRunReceipt = {
       gateway,
       network,
       model,
       amountUsdc: "unknown",
-      txHash:     receiptHeader ?? undefined,
+      txHash:     paymentResponse?.transaction ?? receiptHeader ?? undefined,
       latencyMs,
       settledAt:  new Date().toISOString(),
     };

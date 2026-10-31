@@ -89,19 +89,7 @@ async function startX402Server() {
           console.log(`[x402-server][audit] ${evt.stage}: ${evt.message}`),
       });
 
-      res.json({
-        ok:           true,
-        auditId:      report.auditId,
-        score:        report.score,
-        verdict:      report.verdict,
-        summary:      report.summary,
-        counts:       report.counts,
-        findings:     report.findings,
-        coverage:     report.coverage,
-        blockrunReceipt: report.blockrunReceipt,
-        schemaVersion: report.schemaVersion,
-        createdAt:    report.createdAt,
-      });
+      res.json({ ok: true, ...report });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[x402-server] Audit error:", msg);
