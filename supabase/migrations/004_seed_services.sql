@@ -35,7 +35,6 @@ WHERE a.role = 'provider' AND a.is_active = true
     WHERE s.agent_id = a.id
       AND s.endpoint_url = 'http://localhost:4021/api/paid/capabilities'
   );
-
 INSERT INTO public.services (
   name, description, agent_id, endpoint_url, endpoint_method,
   payment_mode, network, asset_address, price_raw, price_usdc,

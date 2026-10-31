@@ -298,7 +298,8 @@ export interface ServicePayment {
 export interface InvokeServiceRequest {
   serviceId:          string;
   taskId?:            string;
-  input?:             { sourceCode?: string };
+  /** Request body forwarded to a paid POST endpoint. */
+  input?:             Record<string, unknown>;
   maxPerPaymentUsdc:  string;
   budgetUsdc:         string;
 }

@@ -66,10 +66,13 @@ export class X402PaymentAdapter implements ServicePaymentAdapter {
 
     const paidFetch = wrapFetchWithPayment(fetch, client);
 
+    const isPost  = method.toUpperCase() === "POST";
+    const hasBody = isPost && input != null;
+
     const res = await paidFetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      ...(input == null ? {} : { body: JSON.stringify(input) }),
+      ...(hasBody ? { body: JSON.stringify(input) } : {}),
     });
 
     const httpStatus = res.status;

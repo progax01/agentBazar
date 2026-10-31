@@ -442,8 +442,8 @@ async function runBlockRunAI(
     return { findings: [], skipped: true, skipReason: "BLOCKRUN_AI_PAYER_KEY not set" };
   }
 
-  const gateway = process.env.BLOCKRUN_GATEWAY ?? "https://testnet.blockrun.ai";
-  const network = process.env.BLOCKRUN_NETWORK ?? "eip155:84532";
+  const gateway = process.env.BLOCKRUN_GATEWAY ?? "https://arc.blockrun.ai";
+  const network = process.env.BLOCKRUN_NETWORK ?? "eip155:5042";
   const model   = process.env.BLOCKRUN_MODEL   ?? "deepseek/deepseek-chat";
 
   let wrapFetchWithPayment: (f: typeof fetch, c: unknown) => typeof fetch;
@@ -476,11 +476,16 @@ async function runBlockRunAI(
   try {
     const normalizedKey = (payerKey.startsWith("0x") ? payerKey : `0x${payerKey}`) as `0x${string}`;
     const signer  = privateKeyToAccount(normalizedKey);
-    // arc-studio-allow-onchain-literal — Arc Testnet USDC, public constant
-    const USDC_TESTNET = "0x3600000000000000000000000000000000000000";
-    const USDC_BASE_SEP = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-    const assetAddress = network.includes("84532") ? USDC_BASE_SEP : USDC_TESTNET;
+    // arc-studio-allow-onchain-literal — USDC addresses, public constants
+    const USDC_ARC      = "0x3600000000000000000000000000000000000000"; // Arc mainnet + testnet
+    const USDC_BASE_SEP = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // Base Sepolia
+    const USDC_BASE     = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // Base mainnet
+    let assetAddress: string;
+    if (network === "eip155:84532") assetAddress = USDC_BASE_SEP;
+    else if (network === "eip155:8453") assetAddress = USDC_BASE;
+    else assetAddress = USDC_ARC; // Arc mainnet (5042) and Arc testnet (5042002)
 
+    // maxAmountPerPayment must be atomic micro-USDC (6 decimals): 200000 = 0.20 USDC
     const client = x402ClientCtor({
       schemes: [{ network, client: new ExactEvmSchemeCtor(signer) }],
       spendControls: {
