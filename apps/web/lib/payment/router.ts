@@ -10,6 +10,7 @@ import type {
   Service, ServicePayment, ServicePaymentStatus,
   InvokeServiceRequest, InvokeServiceResponse,
 } from "@agetbazar/shared";
+import { ARC_NETWORKS } from "@agetbazar/shared";
 
 // ---- Adapter registry ----
 const adapters = new Map<string, ServicePaymentAdapter>([
@@ -141,6 +142,16 @@ export async function invokeService(
     };
   }
 
+  // ---- Resolve active network and asset ----
+  // request.network ("testnet" | "mainnet") overrides the service's stored network.
+  // The stored service.network is used only as the fallback when the caller didn't specify.
+  const activeNetworkName = request.network ?? (
+    service.network.includes("5042002") ? "testnet" : "mainnet"
+  ) as "testnet" | "mainnet";
+  const activeNetworkConfig = ARC_NETWORKS[activeNetworkName];
+  const activeNetwork      = activeNetworkConfig.caip2;        // e.g. "eip155:5042002"
+  const activeAsset        = activeNetworkConfig.usdcAddress;  // always the same USDC addr on Arc
+
   // ---- Persist invocation record (before payment so we have an audit trail) ----
   const paymentId = uuidv4();
   await pool.query(
@@ -156,8 +167,8 @@ export async function invokeService(
       service.agentId,
       service.id,
       service.paymentMode,
-      service.network,
-      service.assetAddress,
+      activeNetwork,
+      activeAsset,
       service.priceRaw,
       service.payToAddress,
       service.facilitatorUrl,
@@ -184,9 +195,9 @@ export async function invokeService(
       request.input ?? null,
       {
         maxPerPaymentUsdc: request.maxPerPaymentUsdc,
-        budgetUsdc: request.budgetUsdc,
-        network: service.network,
-        assetAddress: service.assetAddress,
+        budgetUsdc:        request.budgetUsdc,
+        network:           activeNetwork,   // user-selected network (caip2)
+        assetAddress:      activeAsset,     // USDC on that network
       },
     );
   } catch (err) {

@@ -67,7 +67,7 @@ export default function NewTaskPage() {
 
   const [title,    setTitle]    = useState("");
   const [source,   setSource]   = useState(DEFAULT_SOURCE);
-  const [budget,   setBudget]   = useState("0.25");
+  const [budget,   setBudget]   = useState("0.01");
   const [deadline, setDeadline] = useState("3600");
 
   // Submission state
@@ -206,7 +206,7 @@ export default function NewTaskPage() {
               <label className="block text-sm font-medium text-gray-200 mb-1.5">Budget (USDC)</label>
               <input
                 type="number" value={budget} onChange={(e) => setBudget(e.target.value)}
-                min="0.01" max="1.00" step="0.01" required
+                min="0.01" max="0.10" step="0.01" required
                 className="w-full rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
             </div>

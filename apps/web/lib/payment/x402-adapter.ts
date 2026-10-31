@@ -8,7 +8,29 @@
  * The server/seller side uses @x402/evm/exact/server (see x402-server.ts).
  */
 import type { ServicePaymentAdapter, InvokePolicy, InvokeResult } from "./adapter";
-import type { PaymentReceipt } from "@agetbazar/shared";
+import type { PaymentReceipt, ArcNetworkName } from "@agetbazar/shared";
+import { ARC_NETWORKS } from "@agetbazar/shared";
+
+// Resolve the RPC URL for either Arc network, honouring the proxy when available.
+function getRpcUrl(caip2Network: string): string {
+  const proxyBase  = process.env.RPC_PROXY_BASE_URL;
+  const proxyToken = process.env.RPC_PROXY_TOKEN;
+  const proxyChains = (process.env.RPC_PROXY_CHAINS ?? "").split(",");
+
+  const isMainnet = caip2Network === ARC_NETWORKS.mainnet.caip2;
+  const networkName: ArcNetworkName = isMainnet ? "mainnet" : "testnet";
+
+  if (networkName === "testnet") {
+    if (proxyBase && proxyChains.includes("Arc_Testnet")) {
+      return `${proxyBase}/api/rpc/Arc_Testnet?_rpc_token=${proxyToken}`;
+    }
+    return process.env.ARC_TESTNET_RPC_URL ?? process.env.ARC_RPC_URL ?? ARC_NETWORKS.testnet.rpcUrl;
+  }
+  if (proxyBase && proxyChains.includes("Arc")) {
+    return `${proxyBase}/api/rpc/Arc?_rpc_token=${proxyToken}`;
+  }
+  return process.env.ARC_MAINNET_RPC_URL ?? ARC_NETWORKS.mainnet.rpcUrl;
+}
 
 function normalizeKey(raw: string): `0x${string}` {
   return raw.startsWith("0x") ? (raw as `0x${string}`) : `0x${raw}`;
@@ -27,6 +49,10 @@ export class X402PaymentAdapter implements ServicePaymentAdapter {
     if (!rawKey) throw new Error("BUYER_AGENT_PRIVATE_KEY not set");
 
     const network = policy.network as `${string}:${string}`;
+
+    // Resolve RPC URL for the active network so ExactEvmScheme can query
+    // nonces and build EIP-3009 authorizations on the right chain.
+    const rpcUrl = getRpcUrl(policy.network);
 
     // Lazy-import to keep the server bundle lean.
     const { privateKeyToAccount } = await import("viem/accounts");
@@ -47,8 +73,10 @@ export class X402PaymentAdapter implements ServicePaymentAdapter {
       schemes: [
         {
           network,
+          // Pass rpcUrl so the scheme can call eth_chainId / balanceOf / nonce
+          // against the correct chain — required for both testnet and mainnet.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          client:  new ExactEvmScheme(signer) as any,
+          client:  new ExactEvmScheme(signer, { rpcUrl }) as any,
         },
       ],
       spendControls: {

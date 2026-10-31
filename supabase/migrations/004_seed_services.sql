@@ -16,15 +16,15 @@ INSERT INTO public.services (
 )
 SELECT
   'Solidity Analysis Capabilities',
-  'Returns the full list of supported Solidity security checks and capabilities. Pay 0.01 USDC per call via x402 on Arc Testnet.',
+  'Returns the full list of supported Solidity security checks and capabilities. Pay 0.001 USDC per call via x402 on Arc Testnet.',
   a.id,
   'http://localhost:4021/api/paid/capabilities',
   'GET',
   'x402',
   'eip155:5042002',
   '0x3600000000000000000000000000000000000000',
-  '10000',
-  0.01,
+  '1000',
+  0.001,
   a.wallet_address,
   'https://facilitator.arcusnetwork.co',
   '["solidity-security-audit","blockrun-ai-analysis","slither-static-analysis","solc-compilation-check","finding-correlation","risk-scoring"]'::jsonb
@@ -43,15 +43,15 @@ INSERT INTO public.services (
 )
 SELECT
   'Solidity Full Audit',
-  'Full security audit using solc, Slither, and BlockRun AI. Submit Solidity source code and receive findings with risk scoring. Pay 0.50 USDC per call via x402 on Arc Testnet.',
+  'Full security audit using solc, Slither, and BlockRun AI. Submit Solidity source code and receive findings with risk scoring. Pay 0.01 USDC per call via x402 on Arc Testnet.',
   a.id,
   'http://localhost:4021/api/paid/audit',
   'POST',
   'x402',
   'eip155:5042002',
   '0x3600000000000000000000000000000000000000',
-  '500000',
-  0.50,
+  '10000',
+  0.01,
   a.wallet_address,
   'https://facilitator.arcusnetwork.co',
   '["solidity-security-audit","blockrun-ai-analysis","slither-static-analysis","solc-compilation-check","finding-correlation","risk-scoring"]'::jsonb
@@ -71,15 +71,15 @@ INSERT INTO public.services (
 )
 SELECT
   'Solidity Analysis Capabilities',
-  'Returns the full list of supported Solidity security checks and capabilities. Pay 0.01 USDC per call via x402 on Arc Mainnet.',
+  'Returns the full list of supported Solidity security checks and capabilities. Pay 0.001 USDC per call via x402 on Arc Mainnet.',
   a.id,
   'http://localhost:4021/api/paid/capabilities',
   'GET',
   'x402',
   'eip155:5042',
   '0x3600000000000000000000000000000000000000',
-  '10000',
-  0.01,
+  '1000',
+  0.001,
   a.wallet_address,
   'https://facilitator.arcusnetwork.co',
   '["solidity-security-audit","blockrun-ai-analysis","slither-static-analysis","solc-compilation-check","finding-correlation","risk-scoring"]'::jsonb
@@ -99,15 +99,15 @@ INSERT INTO public.services (
 )
 SELECT
   'Solidity Full Audit',
-  'Full security audit using solc, Slither, and BlockRun AI. Submit Solidity source code and receive findings with risk scoring. Pay 0.50 USDC per call via x402 on Arc Mainnet.',
+  'Full security audit using solc, Slither, and BlockRun AI. Submit Solidity source code and receive findings with risk scoring. Pay 0.01 USDC per call via x402 on Arc Mainnet.',
   a.id,
   'http://localhost:4021/api/paid/audit',
   'POST',
   'x402',
   'eip155:5042',
   '0x3600000000000000000000000000000000000000',
-  '500000',
-  0.50,
+  '10000',
+  0.01,
   a.wallet_address,
   'https://facilitator.arcusnetwork.co',
   '["solidity-security-audit","blockrun-ai-analysis","slither-static-analysis","solc-compilation-check","finding-correlation","risk-scoring"]'::jsonb

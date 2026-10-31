@@ -25,7 +25,7 @@ export async function POST(
     });
   }
 
-  const { maxPerPaymentUsdc, budgetUsdc, taskId, input } = body;
+  const { maxPerPaymentUsdc, budgetUsdc, taskId, input, network } = body;
 
   if (!maxPerPaymentUsdc || isNaN(parseFloat(maxPerPaymentUsdc)))
     return new Response(JSON.stringify({ error: "maxPerPaymentUsdc is required" }), { status: 400 });
@@ -79,7 +79,7 @@ export async function POST(
       try {
         const result = await invokeService(
           { serviceId: id, taskId, maxPerPaymentUsdc, budgetUsdc,
-            input },
+            input, network },
           buyerAgentId,
         );
 

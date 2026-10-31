@@ -10,7 +10,7 @@ import { getEscrowAddress } from "@/lib/chain/client";
 import { ARC_NETWORKS, parseArcNetwork, type CreateTaskRequest } from "@agetbazar/shared";
 
 const BUDGET_MIN = 0.01;
-const BUDGET_MAX = parseFloat(process.env.TASK_BUDGET_MAX_USDC ?? "1.00");
+const BUDGET_MAX = parseFloat(process.env.TASK_BUDGET_MAX_USDC ?? "0.10");
 const SOURCE_MAX_BYTES = parseInt(process.env.TASK_SOURCE_MAX_BYTES ?? "100000");
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);

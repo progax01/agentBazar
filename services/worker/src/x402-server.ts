@@ -2,8 +2,8 @@
  * x402 paid Express server — provider/seller side.
  *
  * Paid endpoints (all settled in USDC via Arcus facilitator):
- *   POST /api/paid/audit          — 0.50 USDC — runs full AuditOrchestrator pipeline
- *   GET  /api/paid/capabilities   — 0.01 USDC — returns capability manifest
+ *   POST /api/paid/audit          — 0.01 USDC — runs full AuditOrchestrator pipeline
+ *   GET  /api/paid/capabilities   — 0.001 USDC — returns capability manifest
  *
  * Free endpoints:
  *   GET  /health
@@ -64,14 +64,14 @@ async function startX402Server() {
 
   const routes = {
     "POST /api/paid/audit": {
-      accepts: acceptsAt("0.50"),
+      accepts: acceptsAt("0.01"),
     },
     "GET /api/paid/capabilities": {
-      accepts: acceptsAt("0.01"),
+      accepts: acceptsAt("0.001"),
     },
     // Legacy alias kept for existing DB service records
     "GET /api/paid/analysis-capabilities": {
-      accepts: acceptsAt("0.01"),
+      accepts: acceptsAt("0.001"),
     },
   };
 
@@ -80,7 +80,7 @@ async function startX402Server() {
   app.use(express.json({ limit: "500kb" }));
   app.use(paymentMiddleware(routes, resourceServer));
 
-  // ── POST /api/paid/audit — Full audit (paid, 0.50 USDC) ─────────────────
+  // ── POST /api/paid/audit — Full audit (paid, 0.01 USDC) ─────────────────
   app.post("/api/paid/audit", async (req: Request, res: Response) => {
     const { sourceCode, taskId } = req.body as { sourceCode?: string; taskId?: string };
 
@@ -115,8 +115,8 @@ async function startX402Server() {
       networks:            NETWORKS.map(({ network }) => network),
       facilitator:         FACILITATOR_URL,
       pricingUsdc: {
-        "POST /api/paid/audit":         "0.50",
-        "GET  /api/paid/capabilities":  "0.01",
+        "POST /api/paid/audit":         "0.01",
+        "GET  /api/paid/capabilities":  "0.001",
       },
       capabilities: [
         "solidity-security-audit",
@@ -166,16 +166,16 @@ async function startX402Server() {
       facilitator: FACILITATOR_URL,
       payTo,
       endpoints: {
-        "POST /api/paid/audit":        "0.50 USDC",
-        "GET  /api/paid/capabilities": "0.01 USDC",
+        "POST /api/paid/audit":        "0.01 USDC",
+        "GET  /api/paid/capabilities": "0.001 USDC",
       },
     });
   });
 
   app.listen(PORT, () => {
     console.log(`[x402-server] ✅  Listening on port ${PORT}`);
-    console.log(`[x402-server]    Paid: POST http://localhost:${PORT}/api/paid/audit (0.50 USDC)`);
-    console.log(`[x402-server]    Paid: GET  http://localhost:${PORT}/api/paid/capabilities (0.01 USDC)`);
+    console.log(`[x402-server]    Paid: POST http://localhost:${PORT}/api/paid/audit (0.01 USDC)`);
+    console.log(`[x402-server]    Paid: GET  http://localhost:${PORT}/api/paid/capabilities (0.001 USDC)`);
     console.log(`[x402-server]    Free: GET  http://localhost:${PORT}/health`);
     console.log(`[x402-server]    Networks: ${NETWORKS.map(({ network }) => network).join(", ")} | Pay-to: ${payTo}`);
   });

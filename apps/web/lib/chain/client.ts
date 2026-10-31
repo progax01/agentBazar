@@ -8,14 +8,22 @@ import { privateKeyToAccount } from "viem/accounts";
 import { ARC_NETWORKS, type ArcNetworkName } from "@agetbazar/shared";
 
 // Build the RPC URL via the Arc Studio RPC proxy when available, falling back
-// to the Arc Testnet public endpoint otherwise.
+// to the public endpoint otherwise.
 function getRpcUrl(network: ArcNetworkName): string {
+  const proxyChains = (process.env.RPC_PROXY_CHAINS ?? "").split(",");
+  const proxyBase   = process.env.RPC_PROXY_BASE_URL;
+  const proxyToken  = process.env.RPC_PROXY_TOKEN;
+
   if (network === "testnet") {
-    const proxyChains = (process.env.RPC_PROXY_CHAINS ?? "").split(",");
-    if (process.env.RPC_PROXY_BASE_URL && proxyChains.includes("Arc_Testnet")) {
-      return `${process.env.RPC_PROXY_BASE_URL}/api/rpc/Arc_Testnet?_rpc_token=${process.env.RPC_PROXY_TOKEN}`;
+    if (proxyBase && proxyChains.includes("Arc_Testnet")) {
+      return `${proxyBase}/api/rpc/Arc_Testnet?_rpc_token=${proxyToken}`;
     }
     return process.env.ARC_TESTNET_RPC_URL ?? process.env.ARC_RPC_URL ?? ARC_NETWORKS.testnet.rpcUrl;
+  }
+
+  // Mainnet — prefer proxy if "Arc" is listed, otherwise env var, then public
+  if (proxyBase && proxyChains.includes("Arc")) {
+    return `${proxyBase}/api/rpc/Arc?_rpc_token=${proxyToken}`;
   }
   return process.env.ARC_MAINNET_RPC_URL ?? ARC_NETWORKS.mainnet.rpcUrl;
 }

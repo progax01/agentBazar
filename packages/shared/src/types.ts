@@ -303,6 +303,12 @@ export interface InvokeServiceRequest {
   input?:             Record<string, unknown>;
   maxPerPaymentUsdc:  string;
   budgetUsdc:         string;
+  /**
+   * Active network selected by the user ("testnet" | "mainnet").
+   * When provided, the payment is routed on this network instead of the
+   * service's stored default network.
+   */
+  network?:           import("./chain").ArcNetworkName;
 }
 
 export interface InvokeServiceResponse {

@@ -329,13 +329,14 @@ function AuditResultPanel({ data }: { data: AuditResultData }) {
 // ─── Invoke modal ─────────────────────────────────────────────────────────────
 
 function InvokeModal({ service, onClose }: { service: Service; onClose: () => void }) {
+  const { network } = useArcNetwork();
   const isAuditService = service.endpointMethod === "POST" &&
     (service.endpointUrl.includes("/audit") || service.capabilities.some(c => c.includes("audit")));
   const requiresSourceCode = isAuditService;
   const INVOKE_STEPS = isAuditService ? INVOKE_STEPS_AUDIT : INVOKE_STEPS_DEFAULT;
 
   const [maxPer,      setMaxPer]      = useState(String(service.priceUsdc));
-  const [budget,      setBudget]      = useState("1.00");
+  const [budget,      setBudget]      = useState(String((parseFloat(String(service.priceUsdc)) * 2).toFixed(3)));
   const [sourceCode,  setSourceCode]  = useState(isAuditService ? DEFAULT_CONTRACT : "");
   const [showCode,    setShowCode]    = useState(isAuditService);
   const [step,        setStep]        = useState<InvokeStep>("idle");
@@ -370,7 +371,7 @@ function InvokeModal({ service, onClose }: { service: Service; onClose: () => vo
 
     setStep("checking");
 
-    const body: Record<string, unknown> = { maxPerPaymentUsdc: maxPer, budgetUsdc: budget };
+    const body: Record<string, unknown> = { maxPerPaymentUsdc: maxPer, budgetUsdc: budget, network };
     if (isAuditService && sourceCode.trim()) body.input = { sourceCode: sourceCode.trim() };
 
     try {
@@ -527,7 +528,7 @@ function InvokeModal({ service, onClose }: { service: Service; onClose: () => vo
             <div>
               <label className="block text-xs text-slate-400 mb-1.5">Max per payment (USDC)</label>
               <input
-                type="number" step="0.01" min={service.priceUsdc}
+                type="number" step="0.001" min={service.priceUsdc} max="0.10"
                 value={maxPer} onChange={e => setMaxPer(e.target.value)} disabled={loading}
                 className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500 disabled:opacity-50"
               />
@@ -535,7 +536,7 @@ function InvokeModal({ service, onClose }: { service: Service; onClose: () => vo
             <div>
               <label className="block text-xs text-slate-400 mb-1.5">Session budget (USDC)</label>
               <input
-                type="number" step="0.01" min={service.priceUsdc}
+                type="number" step="0.001" min={service.priceUsdc} max="0.10"
                 value={budget} onChange={e => setBudget(e.target.value)} disabled={loading}
                 className="w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500 disabled:opacity-50"
               />
