@@ -22,7 +22,7 @@ export class X402PaymentAdapter implements ServicePaymentAdapter {
   async invoke(
     url:    string,
     method: string,
-    _input: unknown,
+    input:  unknown,
     policy: InvokePolicy,
   ): Promise<InvokeResult> {
     const rawKey = process.env.BUYER_AGENT_PRIVATE_KEY;
@@ -69,6 +69,7 @@ export class X402PaymentAdapter implements ServicePaymentAdapter {
     const res = await paidFetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
+      ...(input == null ? {} : { body: JSON.stringify(input) }),
     });
 
     const httpStatus = res.status;

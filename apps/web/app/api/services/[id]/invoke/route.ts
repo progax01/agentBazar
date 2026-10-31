@@ -16,7 +16,7 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { maxPerPaymentUsdc, budgetUsdc, taskId } = body;
+  const { maxPerPaymentUsdc, budgetUsdc, taskId, input } = body;
 
   if (!maxPerPaymentUsdc || isNaN(parseFloat(maxPerPaymentUsdc)))
     return NextResponse.json({ error: "maxPerPaymentUsdc is required" }, { status: 400 });
@@ -24,9 +24,24 @@ export async function POST(
     return NextResponse.json({ error: "budgetUsdc is required" }, { status: 400 });
 
   // Validate the service exists before looking up a buyer agent
-  const service = await getServiceById(id).catch(() => null);
+  let service;
+  try {
+    service = await getServiceById(id);
+  } catch (err) {
+    console.error("[POST /api/services/:id/invoke] service lookup failed", err);
+    return NextResponse.json({ error: "Service registry is temporarily unavailable" }, { status: 503 });
+  }
   if (!service)
     return NextResponse.json({ error: "Service not found" }, { status: 404 });
+
+  const isPaidAudit = service.endpointMethod.toUpperCase() === "POST" &&
+    service.endpointUrl.endsWith("/api/paid/audit");
+  if (isPaidAudit && (typeof input?.sourceCode !== "string" || input.sourceCode.trim().length < 10)) {
+    return NextResponse.json(
+      { error: "At least 10 characters of Solidity source are required for this paid audit." },
+      { status: 400 },
+    );
+  }
 
   // Resolve the buyer agent id
   const pool = getPool();
@@ -39,7 +54,7 @@ export async function POST(
 
   try {
     const result = await invokeService(
-      { serviceId: id, taskId, maxPerPaymentUsdc, budgetUsdc },
+      { serviceId: id, taskId, input, maxPerPaymentUsdc, budgetUsdc },
       buyerAgentId,
     );
 

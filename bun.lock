@@ -44,6 +44,9 @@
     "packages/shared": {
       "name": "@agetbazar/shared",
       "version": "0.1.0",
+      "dependencies": {
+        "viem": "^2.21.55",
+      },
     },
     "services/worker": {
       "name": "@agetbazar/worker",

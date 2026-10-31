@@ -284,6 +284,8 @@ export default function AnalyzePage() {
     { id: "code",     label: "Contract Source",    icon: Code2 },
     { id: "coverage", label: "Coverage",            icon: Activity },
   ] as const;
+  const blockrunAi = report?.coverage.blockrunAi;
+  const blockrunFailed = Boolean(blockrunAi && !blockrunAi.skipped && !blockrunAi.ran);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -534,8 +536,8 @@ export default function AnalyzePage() {
                       </p>
                       <CoverageRow
                         icon={report.coverage.blockrunAi.ran ? CheckCircle2 : XCircle}
-                        label={report.coverage.blockrunAi.ran ? "Inference complete" : "Skipped"}
-                        status={report.coverage.blockrunAi.ran ? "ok" : "skip"}
+                        label={report.coverage.blockrunAi.ran ? "Inference complete" : blockrunFailed ? "Request failed" : "Skipped"}
+                        status={report.coverage.blockrunAi.ran ? "ok" : blockrunFailed ? "warn" : "skip"}
                         detail={report.coverage.blockrunAi.ran
                           ? `${report.coverage.blockrunAi.model}`
                           : (report.coverage.blockrunAi.skipReason ?? "BLOCKRUN_AI_PAYER_KEY not set")}

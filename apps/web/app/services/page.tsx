@@ -75,13 +75,20 @@ function StepRow({ label, state }: { label: string; state: "idle"|"active"|"done
 function InvokeModal({ service, onClose }: { service: Service; onClose: () => void }) {
   const [maxPer,   setMaxPer]   = useState(String(service.priceUsdc));
   const [budget,   setBudget]   = useState("1.00");
+  const [sourceCode, setSourceCode] = useState("");
   const [step,     setStep]     = useState<InvokeStep>("idle");
   const [result,   setResult]   = useState<Record<string, unknown> | null>(null);
   const [error,    setError]    = useState<string | null>(null);
   const [txHash,   setTxHash]   = useState<string | null>(null);
+  const requiresSourceCode = service.endpointUrl.endsWith("/api/paid/audit");
   const loading = step !== "idle" && step !== "done" && step !== "failed";
 
   async function invoke() {
+    if (requiresSourceCode && sourceCode.trim().length < 10) {
+      setStep("failed");
+      setError("Enter at least 10 characters of Solidity source before paying.");
+      return;
+    }
     setError(null);
     setResult(null);
     setTxHash(null);
@@ -95,7 +102,11 @@ function InvokeModal({ service, onClose }: { service: Service; onClose: () => vo
       const res  = await fetch(`/api/services/${service.id}/invoke`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ maxPerPaymentUsdc: maxPer, budgetUsdc: budget }),
+        body:    JSON.stringify({
+          maxPerPaymentUsdc: maxPer,
+          budgetUsdc: budget,
+          input: requiresSourceCode ? { sourceCode } : undefined,
+        }),
       });
       const data = await res.json() as Record<string, unknown>;
       if (!res.ok) {
@@ -125,7 +136,7 @@ function InvokeModal({ service, onClose }: { service: Service; onClose: () => vo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="relative w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/50">
+      <div className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/50">
 
         {/* Header */}
         <div className="flex items-start justify-between p-6 pb-4 border-b border-slate-800">
@@ -146,6 +157,22 @@ function InvokeModal({ service, onClose }: { service: Service; onClose: () => vo
               <p>Facilitator: <span className="text-slate-300 font-mono text-[10px]">{service.facilitatorUrl}</span></p>
             </div>
           </div>
+
+          {requiresSourceCode && (
+            <div>
+              <label htmlFor="audit-source" className="block text-xs text-slate-400 mb-1.5">Solidity source</label>
+              <textarea
+                id="audit-source"
+                value={sourceCode}
+                onChange={e => setSourceCode(e.target.value)}
+                disabled={loading}
+                rows={9}
+                spellCheck={false}
+                placeholder="Paste the Solidity contract to audit"
+                className="w-full min-h-40 max-h-64 resize-y rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-violet-500 disabled:opacity-50"
+              />
+            </div>
+          )}
 
           {/* Spend controls */}
           <div className="grid grid-cols-2 gap-3">
@@ -192,6 +219,9 @@ function InvokeModal({ service, onClose }: { service: Service; onClose: () => vo
           {step === "done" && result && (
             <div className="rounded-xl bg-green-950/20 border border-green-700/40 p-4">
               <p className="text-xs font-semibold text-green-400 mb-2">Service response</p>
+              {typeof result.warning === "string" && (
+                <p className="text-xs text-amber-300 mb-2">{result.warning}</p>
+              )}
               <pre className="text-xs text-slate-300 overflow-auto max-h-40 whitespace-pre-wrap font-mono">
                 {JSON.stringify(result.data ?? result, null, 2)}
               </pre>

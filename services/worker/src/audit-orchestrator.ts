@@ -331,8 +331,8 @@ function runSolc(srcFile: string, dir: string, ozLib: string): SolcResult {
 
   // Compile
   try {
-    execFileSync("solc", ["--no-cbor-metadata", ozRemap, srcFile, "--overwrite"],
-      { timeout: 60_000, cwd: dir });
+    execFileSync("solc", ["--no-cbor-metadata", ozRemap, srcFile, "--overwrite", "-o", dir],
+      { timeout: 60_000 });
   } catch (e) {
     compilerStatus = "error";
     compilerOutput = String(e instanceof Error ? e.message : e);
@@ -346,8 +346,8 @@ function runSolc(srcFile: string, dir: string, ozLib: string): SolcResult {
   // AST scan
   try {
     const astOut = execFileSync(
-      "solc", ["--ast-compact-json", ozRemap, srcFile, "--overwrite"],
-      { timeout: 60_000, cwd: dir }).toString();
+      "solc", ["--ast-compact-json", ozRemap, srcFile, "--overwrite", "-o", dir],
+      { timeout: 60_000 }).toString();
     const m = astOut.match(/=======.*?=======\n([\s\S]+)/);
     if (m) findings.push(...astScan(m[1]));
   } catch { /* non-blocking */ }
@@ -355,8 +355,8 @@ function runSolc(srcFile: string, dir: string, ozLib: string): SolcResult {
   // Compiler warnings
   try {
     const wOut = execFileSync(
-      "solc", ["--bin", ozRemap, srcFile, "--overwrite"],
-      { timeout: 60_000, cwd: dir, encoding: "utf8" });
+      "solc", ["--bin", ozRemap, srcFile, "--overwrite", "-o", dir],
+      { timeout: 60_000, encoding: "utf8" });
     const wRe = /Warning:\s*([^\n]+)\n(?:.*\n)*?.*--> [^:]+:(\d+):/g;
     let wm: RegExpExecArray | null;
     while ((wm = wRe.exec(wOut)) !== null) {
@@ -433,7 +433,10 @@ interface BlockRunResult {
   skipReason?:    string;
 }
 
-async function runBlockRunAI(sourceCode: string): Promise<BlockRunResult> {
+async function runBlockRunAI(
+  sourceCode: string,
+  onProgress?: (event: AuditProgressEvent) => void,
+): Promise<BlockRunResult> {
   const payerKey = process.env.BLOCKRUN_AI_PAYER_KEY?.trim();
   if (!payerKey) {
     return { findings: [], skipped: true, skipReason: "BLOCKRUN_AI_PAYER_KEY not set" };
@@ -478,7 +481,7 @@ async function runBlockRunAI(sourceCode: string): Promise<BlockRunResult> {
     const client = x402ClientCtor({
       schemes: [{ network, client: new ExactEvmSchemeCtor(signer) }],
       spendControls: {
-        allowedAssets: [{ network, asset: assetAddress, maxAmountPerPayment: "2.00" }],
+        allowedAssets: [{ network, asset: assetAddress, maxAmountPerPayment: "2000000" }],
       },
     });
     const paidFetch = wrapFetchWithPayment(fetch, client) as typeof fetch;
@@ -503,7 +506,12 @@ ${sourceCode.slice(0, 8000)}
 Respond with ONLY the JSON array, no other text.`;
 
     const startMs = Date.now();
-    const resp = await paidFetch(`${gateway}/api/v1/chat/completions`, {
+    const endpoint = `${gateway}/api/v1/chat/completions`;
+    onProgress?.({
+      stage: "blockrun",
+      message: `Sending x402 chat request to ${endpoint} (${network}, ${model})`,
+    });
+    const resp = await paidFetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -513,6 +521,7 @@ Respond with ONLY the JSON array, no other text.`;
         max_tokens: 2048,
       }),
     });
+    onProgress?.({ stage: "blockrun", message: `BlockRun responded with HTTP ${resp.status}` });
 
     const latencyMs = Date.now() - startMs;
     const receiptHeader = resp.headers.get("X-Payment-Receipt") ?? resp.headers.get("x-payment-receipt");
@@ -566,9 +575,10 @@ Respond with ONLY the JSON array, no other text.`;
 
     return { findings, receipt, skipped: false };
   } catch (e) {
+    const skipReason = `BlockRun error: ${e instanceof Error ? e.message : String(e)}`;
     return {
       findings: [], skipped: false,
-      skipReason: `BlockRun error: ${e instanceof Error ? e.message : String(e)}`,
+      skipReason,
     };
   }
 }
@@ -681,8 +691,9 @@ export async function runAudit(opts: RunAuditOptions): Promise<AuditReport> {
 
   // ── Run all three branches in parallel ──────────────────────────────────
   const [blockrunResult, slitherFindings] = await Promise.all([
-    runBlockRunAI(sourceCode).then((r) => {
+    runBlockRunAI(sourceCode, onProgress).then((r) => {
       if (r.skipped) emit("blockrun", `BlockRun AI skipped: ${r.skipReason}`);
+      else if (r.skipReason) emit("blockrun", r.skipReason, { error: true });
       else if (r.receipt) emit("blockrun", `BlockRun AI inference complete (${r.receipt.latencyMs}ms)`);
       return r;
     }),
@@ -754,7 +765,7 @@ export async function runAudit(opts: RunAuditOptions): Promise<AuditReport> {
       findings:  slitherFindings.length,
     },
     blockrunAi: {
-      ran:       !blockrunResult.skipped,
+      ran:       !blockrunResult.skipped && !blockrunResult.skipReason,
       gateway:   process.env.BLOCKRUN_GATEWAY ?? "testnet.blockrun.ai",
       model:     process.env.BLOCKRUN_MODEL    ?? "deepseek/deepseek-chat",
       findings:  blockrunResult.findings.length,

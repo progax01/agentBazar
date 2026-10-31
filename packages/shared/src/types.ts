@@ -298,6 +298,7 @@ export interface ServicePayment {
 export interface InvokeServiceRequest {
   serviceId:          string;
   taskId?:            string;
+  input?:             { sourceCode?: string };
   maxPerPaymentUsdc:  string;
   budgetUsdc:         string;
 }
@@ -308,4 +309,5 @@ export interface InvokeServiceResponse {
   receipt?:   PaymentReceipt;
   data?:      unknown;
   error?:     string;
+  warning?:   string;
 }

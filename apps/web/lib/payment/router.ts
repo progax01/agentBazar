@@ -178,7 +178,7 @@ export async function invokeService(
     invokeResult = await adapter.invoke(
       service.endpointUrl,
       service.endpointMethod,
-      null,
+      request.input ?? null,
       { maxPerPaymentUsdc: request.maxPerPaymentUsdc, budgetUsdc: request.budgetUsdc },
     );
   } catch (err) {
@@ -199,26 +199,33 @@ export async function invokeService(
   const finalStatus: ServicePaymentStatus =
     txHash ? "settled" : receipt?.status === "payment_verified" ? "payment_verified" : "executing";
 
-  await pool.query(
-    `UPDATE service_payments
-       SET status=$1, tx_hash=$2, http_status=200,
-           result_reference=$3,
-           settled_at = CASE WHEN $1='settled' THEN NOW() ELSE NULL END
-     WHERE id=$4`,
-    [
-      finalStatus,
-      txHash,
-      JSON.stringify({ summary: typeof invokeResult.data === "object"
-        ? Object.keys(invokeResult.data as object).join(", ")
-        : "ok" }),
-      paymentId,
-    ],
-  );
+  let warning: string | undefined;
+  try {
+    await pool.query(
+      `UPDATE service_payments
+         SET status=$1, tx_hash=$2, http_status=200,
+             result_reference=$3,
+             settled_at = CASE WHEN $1='settled' THEN NOW() ELSE NULL END
+       WHERE id=$4`,
+      [
+        finalStatus,
+        txHash,
+        JSON.stringify({ summary: typeof invokeResult.data === "object"
+          ? Object.keys(invokeResult.data as object).join(", ")
+          : "ok" }),
+        paymentId,
+      ],
+    );
+  } catch (err) {
+    console.error(`[PaymentRouter] Paid service ${paymentId} succeeded but payment history update failed:`, err);
+    warning = "The paid service returned successfully, but payment history could not be updated. Check payment history before retrying.";
+  }
 
   return {
     paymentId,
     status:  finalStatus,
     receipt,
     data:    invokeResult.data,
+    warning,
   };
 }
