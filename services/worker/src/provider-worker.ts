@@ -10,7 +10,7 @@ import stableStringify from "fast-json-stable-stringify";
 import { v4 as uuidv4 } from "uuid";
 import type { AcceptanceCriteria } from "@agetbazar/shared";
 import { escrowAbi } from "@agetbazar/shared";
-import { createPublic, createProviderWallet, ESCROW_ADDRESS } from "./chain/client";
+import { createPublic, createProviderWallet, networkForChainId } from "./chain/client";
 import { runAudit } from "./audit-orchestrator";
 
 const POLL_INTERVAL_MS = 5_000;
@@ -44,6 +44,8 @@ export class ProviderWorker {
     const { rows } = await this.pool.query<{
       id:              string;
       onchain_task_id: string;
+      chain_id:        number;
+      contract_address:`0x${string}`;
       input_json:      { sourceCode: string };
       criteria_json:   AcceptanceCriteria;
     }>(
@@ -56,14 +58,14 @@ export class ProviderWorker {
           AND (worker_claimed_at IS NULL OR worker_claimed_at < NOW() - INTERVAL '10 minutes')
         ORDER BY created_at ASC FOR UPDATE SKIP LOCKED LIMIT 1
       )
-      RETURNING id, onchain_task_id, input_json, criteria_json`,
+      RETURNING id, onchain_task_id, chain_id, contract_address, input_json, criteria_json`,
       [this.providerAgentId],
     );
     if (rows.length === 0) return;
     const task = rows[0];
     console.log(`[ProviderWorker] Claimed task ${task.id}`);
     try {
-      await this.executeTask(task.id, task.onchain_task_id, task.input_json);
+      await this.executeTask(task.id, task.onchain_task_id, task.chain_id, task.contract_address, task.input_json);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[ProviderWorker] Task ${task.id} failed:`, msg);
@@ -77,8 +79,11 @@ export class ProviderWorker {
   private async executeTask(
     taskId:        string,
     onchainTaskId: string,
+    chainId:       number,
+    escrowAddress: `0x${string}`,
     input:         { sourceCode: string },
   ) {
+    const network = networkForChainId(chainId);
     console.log(`[ProviderWorker] Running AuditOrchestrator for task ${taskId}…`);
 
     const report = await runAudit({
@@ -115,13 +120,12 @@ export class ProviderWorker {
       console.warn("[ProviderWorker] audit_runs insert skipped:", (e as Error).message);
     });
 
-    if (!ESCROW_ADDRESS) throw new Error("ESCROW_ADDRESS not configured");
-    const publicClient   = createPublic();
-    const providerWallet = createProviderWallet();
+    const publicClient   = createPublic(network);
+    const providerWallet = createProviderWallet(network);
 
     console.log(`[ProviderWorker] Submitting result on-chain for task ${taskId}…`);
     const submitHash = await providerWallet.writeContract({
-      address:      ESCROW_ADDRESS,
+      address:      escrowAddress,
       abi:          escrowAbi,
       functionName: "submitResult",
       args:         [BigInt(onchainTaskId), resultHashHex],

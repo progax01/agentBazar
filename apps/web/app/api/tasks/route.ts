@@ -7,13 +7,11 @@ import { getAgentById } from "@/lib/db/agents";
 import { canonicalHash } from "@/lib/chain/hashing";
 import { fundTask } from "@/lib/buyer-agent";
 import { getEscrowAddress } from "@/lib/chain/client";
-import type { CreateTaskRequest } from "@agetbazar/shared";
+import { ARC_NETWORKS, parseArcNetwork, type CreateTaskRequest } from "@agetbazar/shared";
 
 const BUDGET_MIN = 0.01;
 const BUDGET_MAX = parseFloat(process.env.TASK_BUDGET_MAX_USDC ?? "1.00");
 const SOURCE_MAX_BYTES = parseInt(process.env.TASK_SOURCE_MAX_BYTES ?? "100000");
-const CHAIN_ID = 5_042_002;
-
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const limit  = Math.min(parseInt(url.searchParams.get("limit")  ?? "20"), 100);
@@ -38,6 +36,11 @@ export async function POST(req: NextRequest) {
   // ---- Validate ----
   const { taskType, title, input, budgetUsdc, deadlineSeconds,
           providerAgentId, acceptanceCriteria, idempotencyKey } = body;
+  const network = body.network ?? "testnet";
+  const networkConfig = parseArcNetwork(network);
+  if (!networkConfig)
+    return NextResponse.json({ error: "Unsupported Arc network" }, { status: 400 });
+  const chain = ARC_NETWORKS[networkConfig];
 
   if (taskType !== "solidity-source-report")
     return NextResponse.json({ error: "Unsupported task type" }, { status: 400 });
@@ -74,10 +77,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unknown or inactive provider agent" }, { status: 400 });
 
   // ---- Config ----
-  const escrowAddress = getEscrowAddress();
+  const escrowAddress = getEscrowAddress(networkConfig);
   if (!escrowAddress)
     return NextResponse.json(
-      { error: "Escrow contract not configured on the server" },
+      { error: `${networkConfig === "mainnet" ? "AGETBAZAR_MAINNET_ESCROW_ADDRESS" : "AGETBAZAR_TESTNET_ESCROW_ADDRESS"} is not configured on the server` },
       { status: 503 },
     );
 
@@ -88,6 +91,8 @@ export async function POST(req: NextRequest) {
     input,
     budgetUsdc,
     acceptanceCriteria,
+    chainId: chain.chainId,
+    contractAddress: escrowAddress,
     providerAddress: provider.walletAddress,
   };
   const specificationHash = canonicalHash(specification);
@@ -112,7 +117,7 @@ export async function POST(req: NextRequest) {
         $11, $12, $13, 'creating', $14, NOW(), NOW()
       )`,
       [
-        taskId, CHAIN_ID, escrowAddress,
+        taskId, chain.chainId, escrowAddress,
         /* buyer_agent_id — use the first buyer from agents or placeholder */
         await (async () => {
           const { rows } = await pool.query(
@@ -144,6 +149,7 @@ export async function POST(req: NextRequest) {
       budgetUsdc,
       deadlineSeconds,
       specificationHash as `0x${string}`,
+      networkConfig,
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -189,7 +195,7 @@ export async function POST(req: NextRequest) {
     onchainTaskId:   fundResult.onchainTaskId.toString(),
     status:          "funded",
     budgetUsdc,
-    chainId:         CHAIN_ID,
+    chainId:         chain.chainId,
     contractAddress: escrowAddress,
     transactions: {
       approve:    fundResult.approveTxHash,

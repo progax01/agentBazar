@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
+import { WalletConnect } from "@/components/WalletConnect";
+import { useArcNetwork } from "@/components/ArcNetworkProvider";
 
 const links = [
   { href: "/",          label: "Home"     },
@@ -14,6 +16,7 @@ const links = [
 
 export function NavBar() {
   const path = usePathname();
+  const { network, setNetwork } = useArcNetwork();
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-800 bg-[#030712]/80 backdrop-blur-xl">
@@ -55,12 +58,27 @@ export function NavBar() {
           })}
         </div>
 
-        {/* Right side — live indicator */}
+        {/* Right side — selected chain and connected account */}
         <div className="ml-auto flex items-center gap-2">
-          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-slate-800 border border-slate-700 px-2.5 py-1 text-[11px] text-slate-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
-            Arc Testnet
-          </span>
+          <div className="inline-flex rounded-lg border border-slate-700 bg-slate-900 p-0.5" role="group" aria-label="Arc network">
+            {(["testnet", "mainnet"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={network === option}
+                onClick={() => setNetwork(option)}
+                className={clsx(
+                  "rounded-md px-2 py-1.5 text-[10px] font-semibold transition-colors sm:px-2.5 sm:text-[11px]",
+                  network === option
+                    ? option === "mainnet" ? "bg-emerald-700 text-white" : "bg-sky-700 text-white"
+                    : "text-slate-400 hover:text-white",
+                )}
+              >
+                {option === "testnet" ? "Testnet" : "Mainnet"}
+              </button>
+            ))}
+          </div>
+          <WalletConnect />
         </div>
       </nav>
     </header>

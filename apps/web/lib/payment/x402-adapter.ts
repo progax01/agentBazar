@@ -10,8 +10,6 @@
 import type { ServicePaymentAdapter, InvokePolicy, InvokeResult } from "./adapter";
 import type { PaymentReceipt } from "@agetbazar/shared";
 
-const ARC_NETWORK = process.env.ARC_NETWORK ?? "eip155:5042002";
-
 function normalizeKey(raw: string): `0x${string}` {
   return raw.startsWith("0x") ? (raw as `0x${string}`) : `0x${raw}`;
 }
@@ -28,7 +26,7 @@ export class X402PaymentAdapter implements ServicePaymentAdapter {
     const rawKey = process.env.BUYER_AGENT_PRIVATE_KEY;
     if (!rawKey) throw new Error("BUYER_AGENT_PRIVATE_KEY not set");
 
-    const ARC_USDC = process.env.ARC_USDC_ADDRESS ?? "0x3600000000000000000000000000000000000000";
+    const network = policy.network as `${string}:${string}`;
 
     // Lazy-import to keep the server bundle lean.
     const { privateKeyToAccount } = await import("viem/accounts");
@@ -48,7 +46,7 @@ export class X402PaymentAdapter implements ServicePaymentAdapter {
     const client = x402Client.fromConfig({
       schemes: [
         {
-          network: ARC_NETWORK as `${string}:${string}`,
+          network,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           client:  new ExactEvmScheme(signer) as any,
         },
@@ -56,8 +54,8 @@ export class X402PaymentAdapter implements ServicePaymentAdapter {
       spendControls: {
         allowedAssets: [
           {
-            network:             ARC_NETWORK as `${string}:${string}`,
-            asset:               ARC_USDC,
+            network,
+            asset:               policy.assetAddress,
             maxAmountPerPayment: maxAmountRaw,
           },
         ],
@@ -114,7 +112,7 @@ export class X402PaymentAdapter implements ServicePaymentAdapter {
 
     const receipt: PaymentReceipt = {
       mode:            "x402",
-      network:         ARC_NETWORK,
+      network:         policy.network,
       amountUsdc:      policy.maxPerPaymentUsdc,
       payerAddress:    signer.address,
       payToAddress:    res.headers.get("x-pay-to") ?? undefined,

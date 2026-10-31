@@ -7,6 +7,8 @@ import type { PaymentReceipt, PaymentMode } from "@agetbazar/shared";
 export interface InvokePolicy {
   maxPerPaymentUsdc: string;
   budgetUsdc:        string;
+  network:           string;
+  assetAddress:      string;
 }
 
 export interface InvokeResult {

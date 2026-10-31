@@ -5,54 +5,65 @@ import {
   defineChain,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import {
+  ARC_NETWORKS,
+  arcNetworkFromChainId,
+  type ArcNetworkName,
+} from "@agetbazar/shared";
 
-// Build the RPC URL via the Arc Studio RPC proxy when available, falling back
-// to the Arc Testnet public endpoint otherwise.
-const ARC_COMPASS_KEY = "Arc_Testnet";
-const proxyChains = (process.env.RPC_PROXY_CHAINS ?? "").split(",");
-
-function getRpcUrl(): string {
-  if (
-    process.env.RPC_PROXY_BASE_URL &&
-    proxyChains.includes(ARC_COMPASS_KEY)
-  ) {
-    return (
-      process.env.RPC_PROXY_BASE_URL +
-      "/api/rpc/" +
-      ARC_COMPASS_KEY +
-      "?_rpc_token=" +
-      process.env.RPC_PROXY_TOKEN
-    );
-  }
-  // arc-studio-allow-onchain-literal — Arc Testnet public RPC, not a secret
-  return process.env.ARC_RPC_URL ?? "https://rpc.testnet.arc.io";
+export function networkForChainId(chainId: number | string): ArcNetworkName {
+  const network = arcNetworkFromChainId(chainId);
+  if (!network) throw new Error(`Unsupported Arc chain ID: ${chainId}`);
+  return network;
 }
 
-export const ARC_USDC_ADDRESS =
-  // arc-studio-allow-onchain-literal — Arc Testnet USDC ERC-20, public constant
-  (process.env.ARC_USDC_ADDRESS as `0x${string}`) ??
-  "0x3600000000000000000000000000000000000000";
+function getRpcUrl(network: ArcNetworkName): string {
+  if (network === "testnet") {
+    const proxyChains = (process.env.RPC_PROXY_CHAINS ?? "").split(",");
+    if (process.env.RPC_PROXY_BASE_URL && proxyChains.includes("Arc_Testnet")) {
+      return `${process.env.RPC_PROXY_BASE_URL}/api/rpc/Arc_Testnet?_rpc_token=${process.env.RPC_PROXY_TOKEN}`;
+    }
+    return process.env.ARC_TESTNET_RPC_URL ?? process.env.ARC_RPC_URL ?? ARC_NETWORKS.testnet.rpcUrl;
+  }
+  return process.env.ARC_MAINNET_RPC_URL ?? ARC_NETWORKS.mainnet.rpcUrl;
+}
 
-export const ESCROW_ADDRESS =
-  process.env.AGETBAZAR_ESCROW_ADDRESS as `0x${string}` | undefined;
+export function getUsdcAddress(network: ArcNetworkName): `0x${string}` {
+  const address = network === "mainnet"
+    ? process.env.ARC_MAINNET_USDC_ADDRESS
+    : process.env.ARC_TESTNET_USDC_ADDRESS ?? process.env.ARC_USDC_ADDRESS;
+  return (address as `0x${string}` | undefined) ?? ARC_NETWORKS[network].usdcAddress;
+}
 
-export const arcTestnet = defineChain({
-  id: 5_042_002,
-  name: "Arc Testnet",
-  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-  rpcUrls: { default: { http: [getRpcUrl()] } },
-  blockExplorers: {
-    default: {
-      name: "Arc Testnet Explorer",
-      url: "https://explorer.testnet.arc.io",
-    },
-  },
-});
+export const ARC_USDC_ADDRESS = getUsdcAddress("testnet");
 
-export function createPublic() {
+export function getEscrowAddress(network: ArcNetworkName = "testnet"): `0x${string}` | undefined {
+  const address = network === "mainnet"
+    ? process.env.AGETBAZAR_MAINNET_ESCROW_ADDRESS
+    : process.env.AGETBAZAR_TESTNET_ESCROW_ADDRESS ?? process.env.AGETBAZAR_ESCROW_ADDRESS;
+  return address as `0x${string}` | undefined;
+}
+
+export const ESCROW_ADDRESS = getEscrowAddress("testnet");
+
+export function getArcChain(network: ArcNetworkName = "testnet") {
+  const config = ARC_NETWORKS[network];
+  return defineChain({
+    id: config.chainId,
+    name: config.label,
+    nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+    rpcUrls: { default: { http: [getRpcUrl(network)] } },
+    blockExplorers: { default: { name: config.label, url: config.explorerUrl } },
+    ...(config.testnet ? { testnet: true } : {}),
+  });
+}
+
+export const arcTestnet = getArcChain("testnet");
+
+export function createPublic(network: ArcNetworkName = "testnet") {
   return createPublicClient({
-    chain: arcTestnet,
-    transport: http(getRpcUrl()),
+    chain: getArcChain(network),
+    transport: http(getRpcUrl(network)),
   });
 }
 
@@ -61,22 +72,22 @@ function normalizeKey(raw: string): `0x${string}` {
   return raw.startsWith("0x") ? (raw as `0x${string}`) : `0x${raw}`;
 }
 
-export function createBuyerWallet() {
+export function createBuyerWallet(network: ArcNetworkName = "testnet") {
   const key = process.env.BUYER_AGENT_PRIVATE_KEY;
   if (!key) throw new Error("BUYER_AGENT_PRIVATE_KEY not set");
   return createWalletClient({
     account: privateKeyToAccount(normalizeKey(key)),
-    chain: arcTestnet,
-    transport: http(getRpcUrl()),
+    chain: getArcChain(network),
+    transport: http(getRpcUrl(network)),
   });
 }
 
-export function createProviderWallet() {
+export function createProviderWallet(network: ArcNetworkName = "testnet") {
   const key = process.env.PROVIDER_AGENT_PRIVATE_KEY;
   if (!key) throw new Error("PROVIDER_AGENT_PRIVATE_KEY not set");
   return createWalletClient({
     account: privateKeyToAccount(normalizeKey(key)),
-    chain: arcTestnet,
-    transport: http(getRpcUrl()),
+    chain: getArcChain(network),
+    transport: http(getRpcUrl(network)),
   });
 }

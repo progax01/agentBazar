@@ -16,11 +16,19 @@
 import express from "express";
 import type { Request, Response } from "express";
 import { runAudit } from "./audit-orchestrator";
+import { ARC_NETWORKS } from "@agetbazar/shared";
 
 const PORT            = parseInt(process.env.X402_SERVER_PORT ?? "4021");
-const NETWORK         = process.env.ARC_NETWORK ?? "eip155:5042002";
-// arc-studio-allow-onchain-literal — Arc Testnet USDC, public constant
-const USDC            = process.env.ARC_USDC_ADDRESS ?? "0x3600000000000000000000000000000000000000";
+const NETWORKS = [
+  {
+    network: ARC_NETWORKS.testnet.caip2,
+    asset: process.env.ARC_TESTNET_USDC_ADDRESS ?? process.env.ARC_USDC_ADDRESS ?? ARC_NETWORKS.testnet.usdcAddress,
+  },
+  {
+    network: ARC_NETWORKS.mainnet.caip2,
+    asset: process.env.ARC_MAINNET_USDC_ADDRESS ?? ARC_NETWORKS.mainnet.usdcAddress,
+  },
+];
 const FACILITATOR_URL = "https://facilitator.arcusnetwork.co";
 
 async function startX402Server() {
@@ -44,33 +52,26 @@ async function startX402Server() {
 
   const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
   const resourceServer    = new x402ResourceServer([facilitatorClient]);
-  resourceServer.register(NETWORK, new ExactEvmScheme());
+  for (const { network } of NETWORKS) resourceServer.register(network, new ExactEvmScheme());
 
   // ── Route price config ───────────────────────────────────────────────────
   // Backward-compat: old DB records reference /api/paid/analysis-capabilities;
   // register both the canonical path and the legacy alias at the same price.
-  const capabilityAccepts = [{
-    scheme: "exact", network: NETWORK, payTo,
-    price: "0.01",   // 0.01 USDC for capability manifest
-    asset: USDC,
+  const acceptsAt = (price: string) => NETWORKS.map(({ network, asset }) => ({
+    scheme: "exact", network, payTo, price, asset,
     extra: { name: "USDC", version: "2" },
-  }];
+  }));
 
   const routes = {
     "POST /api/paid/audit": {
-      accepts: [{
-        scheme: "exact", network: NETWORK, payTo,
-        price: "0.50",   // 0.50 USDC per full audit
-        asset: USDC,
-        extra: { name: "USDC", version: "2" },
-      }],
+      accepts: acceptsAt("0.50"),
     },
     "GET /api/paid/capabilities": {
-      accepts: capabilityAccepts,
+      accepts: acceptsAt("0.01"),
     },
     // Legacy alias kept for existing DB service records
     "GET /api/paid/analysis-capabilities": {
-      accepts: capabilityAccepts,
+      accepts: acceptsAt("0.01"),
     },
   };
 
@@ -111,7 +112,7 @@ async function startX402Server() {
       serviceId:           "agetbazar-solidity-audit",
       version:             "2.0.0",
       schemaVersion:       2,
-      network:             NETWORK,
+      networks:            NETWORKS.map(({ network }) => network),
       facilitator:         FACILITATOR_URL,
       pricingUsdc: {
         "POST /api/paid/audit":         "0.50",
@@ -146,7 +147,7 @@ async function startX402Server() {
       serviceId:           "agetbazar-solidity-audit",
       version:             "2.0.0",
       schemaVersion:       2,
-      network:             NETWORK,
+      networks:            NETWORKS.map(({ network }) => network),
       facilitator:         FACILITATOR_URL,
       note:                "This path is a legacy alias. Canonical: GET /api/paid/capabilities",
       capabilities: [
@@ -161,7 +162,7 @@ async function startX402Server() {
   app.get("/health", (_req: Request, res: Response) => {
     res.json({
       status:      "ok",
-      network:     NETWORK,
+      networks:    NETWORKS.map(({ network }) => network),
       facilitator: FACILITATOR_URL,
       payTo,
       endpoints: {
@@ -176,7 +177,7 @@ async function startX402Server() {
     console.log(`[x402-server]    Paid: POST http://localhost:${PORT}/api/paid/audit (0.50 USDC)`);
     console.log(`[x402-server]    Paid: GET  http://localhost:${PORT}/api/paid/capabilities (0.01 USDC)`);
     console.log(`[x402-server]    Free: GET  http://localhost:${PORT}/health`);
-    console.log(`[x402-server]    Network: ${NETWORK} | Pay-to: ${payTo}`);
+    console.log(`[x402-server]    Networks: ${NETWORKS.map(({ network }) => network).join(", ")} | Pay-to: ${payTo}`);
   });
 }
 

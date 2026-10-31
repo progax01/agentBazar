@@ -188,6 +188,7 @@ export interface TaskEvent {
 // ---------------------------------------------------------------------------
 
 export interface CreateTaskRequest {
+  network?:           import("./chain").ArcNetworkName;
   taskType:           string;
   title:              string;
   input:              { sourceCode: string };

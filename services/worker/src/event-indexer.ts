@@ -5,8 +5,8 @@
  */
 import { Pool } from "pg";
 import { v4 as uuidv4 } from "uuid";
-import { escrowAbi } from "@agetbazar/shared";
-import { createPublic, ESCROW_ADDRESS } from "./chain/client";
+import { ARC_NETWORKS, escrowAbi, type ArcNetworkName } from "@agetbazar/shared";
+import { createPublic } from "./chain/client";
 import type { Log } from "viem";
 
 const BATCH_SIZE = 2_000n;
@@ -15,17 +15,21 @@ const POLL_INTERVAL_MS = 30_000;
 export class EventIndexer {
   private pool:            Pool;
   private startBlock:      bigint;
+  private network:         ArcNetworkName;
+  private escrowAddress:   `0x${string}`;
   private lastScannedBlock: bigint;
   private timer:           NodeJS.Timeout | null = null;
 
-  constructor(pool: Pool, startBlock: bigint) {
+  constructor(pool: Pool, startBlock: bigint, network: ArcNetworkName, escrowAddress: `0x${string}`) {
     this.pool             = pool;
     this.startBlock       = startBlock;
+    this.network          = network;
+    this.escrowAddress    = escrowAddress;
     this.lastScannedBlock = startBlock - 1n;
   }
 
   start() {
-    console.log(`[EventIndexer] Starting from block ${this.startBlock}`);
+    console.log(`[EventIndexer:${this.network}] Starting from block ${this.startBlock}`);
     this.timer = setInterval(() => this.tick(), POLL_INTERVAL_MS);
     this.tick();
   }
@@ -43,8 +47,7 @@ export class EventIndexer {
   }
 
   private async scan() {
-    if (!ESCROW_ADDRESS) return;
-    const client = createPublic();
+    const client = createPublic(this.network);
 
     const head = await client.getBlockNumber();
     let from   = this.lastScannedBlock + 1n;
@@ -56,7 +59,7 @@ export class EventIndexer {
     console.log(`[EventIndexer] Scanning blocks ${from}–${to} (head: ${head})`);
 
     const logs = await client.getLogs({
-      address:   ESCROW_ADDRESS,
+      address:   this.escrowAddress,
       fromBlock: from,
       toBlock:   to,
     });
@@ -99,8 +102,8 @@ export class EventIndexer {
 
         // Find matching DB task
         const { rows: taskRows } = await this.pool.query(
-          "SELECT id FROM tasks WHERE onchain_task_id = $1",
-          [taskIdBigInt.toString()],
+          "SELECT id FROM tasks WHERE chain_id=$1 AND contract_address=$2 AND onchain_task_id=$3",
+          [ARC_NETWORKS[this.network].chainId, this.escrowAddress, taskIdBigInt.toString()],
         );
         const taskId = taskRows[0]?.id as string | undefined;
         if (!taskId) continue;
@@ -125,7 +128,7 @@ export class EventIndexer {
           ],
         );
 
-        console.log(`[EventIndexer] Indexed ${eventName} for task ${taskId}`);
+        console.log(`[EventIndexer:${this.network}] Indexed ${eventName} for task ${taskId}`);
         break;
       } catch { /* not this event type */ }
     }

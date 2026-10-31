@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { CheckCircle, Circle, Loader2, AlertCircle, ExternalLink } from "lucide-react";
 import clsx from "clsx";
-
-const EXPLORER = "https://explorer.testnet.arc.io";
+import { ARC_NETWORKS, type ArcNetworkName } from "@agetbazar/shared";
+import { useArcNetwork } from "@/components/ArcNetworkProvider";
 
 const DEFAULT_SOURCE = `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
@@ -46,18 +46,24 @@ interface Step {
   detail:  string;
 }
 
-const STEPS: Step[] = [
-  { id: "validate", label: "Validating request",    detail: "Checking provider, budget, and source code" },
-  { id: "approve",  label: "Approving USDC",         detail: "Buyer wallet approves exact USDC to escrow contract" },
-  { id: "fund",     label: "Funding escrow",         detail: "createTask() called on AgetBazarEscrow on Arc Testnet" },
-  { id: "done",     label: "Task funded",            detail: "Redirecting to task dashboard…" },
-];
+function getSteps(network: ArcNetworkName): Step[] {
+  const label = ARC_NETWORKS[network].label;
+  return [
+    { id: "validate", label: "Validating request", detail: "Checking provider, budget, and source code" },
+    { id: "approve", label: "Approving USDC", detail: `Backend buyer wallet approves USDC on ${label}` },
+    { id: "fund", label: "Funding escrow", detail: `createTask() called on ${label}` },
+    { id: "done", label: "Task funded", detail: "Redirecting to task dashboard…" },
+  ];
+}
 
 type StepStatus = "idle" | "active" | "done" | "error";
 
 // ─── Component ──────────────────────────────────────────────────────────────
 export default function NewTaskPage() {
   const router = useRouter();
+  const { network } = useArcNetwork();
+  const networkConfig = ARC_NETWORKS[network];
+  const steps = getSteps(network);
 
   const [title,    setTitle]    = useState("");
   const [source,   setSource]   = useState(DEFAULT_SOURCE);
@@ -98,6 +104,7 @@ export default function NewTaskPage() {
 
       // Step 2+3: fund (approve + createTask happen server-side together)
       const body = {
+        network,
         taskType:        "solidity-source-report",
         title,
         input:           { sourceCode: source },
@@ -164,7 +171,7 @@ export default function NewTaskPage() {
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">New Security Analysis</h1>
           <p className="text-gray-400 mt-2 text-pretty">
-            Submit Solidity source code. The buyer wallet will fund an escrow on Arc Testnet and
+            Submit Solidity source code. The backend buyer wallet will fund an escrow on {networkConfig.label} and
             the provider agent will run a deterministic security analysis.
           </p>
         </div>
@@ -219,7 +226,7 @@ export default function NewTaskPage() {
           {/* Info box */}
           <div className="rounded-xl bg-sky-950/40 border border-sky-800/40 p-4 text-xs text-sky-300 space-y-1">
             <p className="font-semibold text-sky-200">What happens next</p>
-            <p>1. Buyer wallet approves exact USDC to the escrow contract on Arc Testnet</p>
+              <p>1. Backend buyer wallet approves exact USDC to the escrow contract on {networkConfig.label}</p>
             <p>2. <code className="font-mono">createTask()</code> is called — USDC moves into escrow</p>
             <p>3. Provider agent picks up the task, runs <code className="font-mono">solc</code> + pattern analysis</p>
             <p>4. Verifier checks the report; payment is released or refunded automatically</p>
@@ -254,7 +261,7 @@ export default function NewTaskPage() {
 
       {/* Step list */}
       <div className="rounded-2xl bg-gray-900 border border-gray-800 divide-y divide-gray-800 overflow-hidden">
-        {STEPS.map((step) => {
+        {steps.map((step) => {
           const s = stepStatus[step.id];
           return (
             <div key={step.id} className={clsx(
@@ -294,7 +301,7 @@ export default function NewTaskPage() {
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-gray-400">USDC approve</span>
               <a
-                href={`${EXPLORER}/tx/${txHashes.approve}`}
+                href={`${networkConfig.explorerUrl}/tx/${txHashes.approve}`}
                 target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-1 text-xs font-mono text-sky-400 hover:text-sky-300"
               >
@@ -307,7 +314,7 @@ export default function NewTaskPage() {
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-gray-400">createTask</span>
               <a
-                href={`${EXPLORER}/tx/${txHashes.create}`}
+                href={`${networkConfig.explorerUrl}/tx/${txHashes.create}`}
                 target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-1 text-xs font-mono text-sky-400 hover:text-sky-300"
               >

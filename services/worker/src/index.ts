@@ -5,9 +5,11 @@
  * can restart cleanly.
  */
 import { Pool } from "pg";
+import { ARC_NETWORKS, type ArcNetworkName } from "@agetbazar/shared";
 import { ProviderWorker } from "./provider-worker";
 import { BuyerAgent }     from "./buyer-agent";
 import { EventIndexer }   from "./event-indexer";
+import { createPublic, getEscrowAddress } from "./chain/client";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -24,16 +26,17 @@ async function getProviderAgentId(): Promise<string | null> {
   return rows[0]?.id ?? null;
 }
 
-async function getDeploymentBlock(): Promise<bigint> {
+async function getDeploymentBlock(network: ArcNetworkName, escrowAddress: `0x${string}`): Promise<bigint> {
   // Resolve the deployment block from the first TaskCreated event, or fall back
   // to a bounded lookback so we never scan from genesis.
-  const { createPublic } = await import("./chain/client");
-  const client = createPublic();
+  const client = createPublic(network);
   const head   = await client.getBlockNumber();
+  const chainId = ARC_NETWORKS[network].chainId;
 
   // If the DB has any task with a create_tx_hash, resolve the deployment block
   const { rows } = await pool.query(
-    "SELECT create_tx_hash FROM tasks WHERE create_tx_hash IS NOT NULL LIMIT 1",
+    "SELECT create_tx_hash FROM tasks WHERE chain_id=$1 AND contract_address=$2 AND create_tx_hash IS NOT NULL ORDER BY created_at ASC LIMIT 1",
+    [chainId, escrowAddress],
   );
   if (rows[0]?.create_tx_hash) {
     try {
@@ -52,7 +55,7 @@ async function getDeploymentBlock(): Promise<bigint> {
   // Default: scan the last 5,000 blocks (recent activity only)
   const lookback = 5_000n;
   const start    = head > lookback ? head - lookback : 0n;
-  console.log(`[EventIndexer] No deployment block resolved; scanning from block ${start} (head - ${lookback})`);
+  console.log(`[EventIndexer:${network}] No deployment block resolved; scanning from block ${start} (head - ${lookback})`);
   return start;
 }
 
@@ -64,10 +67,16 @@ async function main() {
     console.warn("[Worker] No active provider agent found — provider worker disabled");
   }
 
-  const deploymentBlock = await getDeploymentBlock();
-
-  const indexer = new EventIndexer(pool, deploymentBlock);
-  indexer.start();
+  for (const network of ["testnet", "mainnet"] as const) {
+    const escrowAddress = getEscrowAddress(network);
+    if (!escrowAddress) {
+      console.warn(`[EventIndexer:${network}] Escrow address is not configured; indexer disabled`);
+      continue;
+    }
+    const deploymentBlock = await getDeploymentBlock(network, escrowAddress);
+    const indexer = new EventIndexer(pool, deploymentBlock, network, escrowAddress);
+    indexer.start();
+  }
 
   if (providerAgentId) {
     const providerWorker = new ProviderWorker(pool, providerAgentId);

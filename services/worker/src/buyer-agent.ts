@@ -13,7 +13,7 @@ import type { AcceptanceCriteria } from "@agetbazar/shared";
 import {
   createPublic,
   createBuyerWallet,
-  ESCROW_ADDRESS,
+  networkForChainId,
 } from "./chain/client";
 
 const POLL_INTERVAL_MS = 7_000;
@@ -48,6 +48,8 @@ export class BuyerAgent {
     const { rows } = await this.pool.query<{
       id:               string;
       onchain_task_id:  string;
+      chain_id:         number;
+      contract_address: `0x${string}`;
       input_json:       { sourceCode: string };
       criteria_json:    AcceptanceCriteria;
       result_json:      unknown;
@@ -63,7 +65,7 @@ export class BuyerAgent {
         FOR UPDATE SKIP LOCKED
         LIMIT 1
       )
-      RETURNING id, onchain_task_id, input_json, criteria_json, result_json, result_hash`,
+      RETURNING id, onchain_task_id, chain_id, contract_address, input_json, criteria_json, result_json, result_hash`,
     );
 
     if (rows.length === 0) return;
@@ -85,19 +87,22 @@ export class BuyerAgent {
   private async verify(task: {
     id:              string;
     onchain_task_id: string;
+    chain_id:        number;
+    contract_address:`0x${string}`;
     input_json:      { sourceCode: string };
     criteria_json:   AcceptanceCriteria;
     result_json:     unknown;
     result_hash:     string;
   }) {
-    if (!ESCROW_ADDRESS) throw new Error("ESCROW_ADDRESS not configured");
+    const network = networkForChainId(task.chain_id);
+    const escrowAddress = task.contract_address;
 
-    const publicClient = createPublic();
-    const buyerWallet  = createBuyerWallet();
+    const publicClient = createPublic(network);
+    const buyerWallet  = createBuyerWallet(network);
 
     // 1. Confirm on-chain state is Submitted
     const onchainTask = await publicClient.readContract({
-      address:      ESCROW_ADDRESS,
+      address:      escrowAddress,
       abi:          escrowAbi,
       functionName: "tasks",
       args:         [BigInt(task.onchain_task_id)],
@@ -136,7 +141,7 @@ export class BuyerAgent {
 
     if (validation.passed) {
       settleTxHash = await buyerWallet.writeContract({
-        address:      ESCROW_ADDRESS,
+        address:      escrowAddress,
         abi:          escrowAbi,
         functionName: "approveAndPay",
         args:         [BigInt(task.onchain_task_id)],
@@ -144,7 +149,7 @@ export class BuyerAgent {
       finalStatus = "paid";
     } else {
       settleTxHash = await buyerWallet.writeContract({
-        address:      ESCROW_ADDRESS,
+        address:      escrowAddress,
         abi:          escrowAbi,
         functionName: "rejectAndRefund",
         args:         [BigInt(task.onchain_task_id)],

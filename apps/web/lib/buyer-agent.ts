@@ -4,8 +4,8 @@
  * and parses TaskCreated to get the authoritative on-chain task ID.
  */
 import { parseUnits, decodeEventLog, type Log } from "viem";
-import { createPublic, createBuyerWallet, ARC_USDC_ADDRESS, getEscrowAddress } from "./chain/client";
-import { escrowAbi, usdcAbi } from "@agetbazar/shared";
+import { createPublic, createBuyerWallet, getUsdcAddress, getEscrowAddress } from "./chain/client";
+import { escrowAbi, usdcAbi, type ArcNetworkName } from "@agetbazar/shared";
 
 export interface FundResult {
   onchainTaskId: bigint;
@@ -18,12 +18,17 @@ export async function fundTask(
   budgetUsdc:      string,
   deadlineSeconds: number,
   specificationHash: `0x${string}`,
+  network: ArcNetworkName = "testnet",
 ): Promise<FundResult> {
-  const escrowAddress = getEscrowAddress();
-  if (!escrowAddress) throw new Error("AGETBAZAR_ESCROW_ADDRESS not configured");
+  const escrowAddress = getEscrowAddress(network);
+  if (!escrowAddress) {
+    const variable = network === "mainnet" ? "AGETBAZAR_MAINNET_ESCROW_ADDRESS" : "AGETBAZAR_TESTNET_ESCROW_ADDRESS";
+    throw new Error(`${variable} not configured`);
+  }
 
-  const publicClient = createPublic();
-  const walletClient = createBuyerWallet();
+  const publicClient = createPublic(network);
+  const walletClient = createBuyerWallet(network);
+  const usdcAddress = getUsdcAddress(network);
 
   const amountRaw = parseUnits(budgetUsdc, 6);
   const deadline  = BigInt(Math.floor(Date.now() / 1000) + deadlineSeconds);
@@ -33,7 +38,7 @@ export async function fundTask(
   // the local signer; overriding with just an address string degrades viem to
   // eth_sendTransaction (unsupported on Arc public RPC) instead of signing locally.
   const approveHash = await walletClient.writeContract({
-    address:      ARC_USDC_ADDRESS,
+    address:      usdcAddress,
     abi:          usdcAbi,
     functionName: "approve",
     args:         [escrowAddress, amountRaw],

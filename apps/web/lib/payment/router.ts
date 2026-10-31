@@ -65,10 +65,13 @@ function rowToPayment(row: Record<string, any>): ServicePayment {
   };
 }
 
-export async function listServices(): Promise<Service[]> {
+export async function listServices(network?: string): Promise<Service[]> {
   const pool = getPool();
   const { rows } = await pool.query(
-    "SELECT * FROM services WHERE is_active = true ORDER BY created_at DESC",
+    `SELECT * FROM services
+     WHERE is_active = true AND ($1::text IS NULL OR network = $1)
+     ORDER BY created_at DESC`,
+    [network ?? null],
   );
   return rows.map(rowToService);
 }
@@ -179,7 +182,12 @@ export async function invokeService(
       service.endpointUrl,
       service.endpointMethod,
       request.input ?? null,
-      { maxPerPaymentUsdc: request.maxPerPaymentUsdc, budgetUsdc: request.budgetUsdc },
+      {
+        maxPerPaymentUsdc: request.maxPerPaymentUsdc,
+        budgetUsdc: request.budgetUsdc,
+        network: service.network,
+        assetAddress: service.assetAddress,
+      },
     );
   } catch (err) {
     const msg        = err instanceof Error ? err.message : String(err);

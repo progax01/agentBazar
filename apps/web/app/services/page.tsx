@@ -8,7 +8,9 @@ import {
   ChevronDown, ChevronUp, Bot, Wrench, Clock,
 } from "lucide-react";
 import type { AuditReport, PaymentReceipt, Service } from "@agetbazar/shared";
+import { ARC_NETWORKS } from "@agetbazar/shared";
 import { AuditReportViewer, isAuditReport } from "@/components/AuditReportViewer";
+import { useArcNetwork } from "@/components/ArcNetworkProvider";
 import clsx from "clsx";
 
 const EXPLORER_TESTNET = "https://explorer.testnet.arc.io";
@@ -701,17 +703,19 @@ function ServiceCard({ svc, onInvoke }: { svc: Service; onInvoke: () => void }) 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ServicesPage() {
+  const { network } = useArcNetwork();
+  const networkConfig = ARC_NETWORKS[network];
   const [services, setServices] = useState<Service[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [invoking, setInvoking] = useState<Service | null>(null);
 
   useEffect(() => {
-    fetch("/api/services")
+    fetch(`/api/services?network=${network}`)
       .then(r => r.json() as Promise<{ services: Service[] }>)
       .then(d => setServices(d.services ?? []))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [network]);
 
   return (
     <div className="space-y-8">
@@ -721,7 +725,7 @@ export default function ServicesPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Agent Services</h1>
           <p className="text-slate-400 text-sm mt-1">
-            Paid API endpoints — pay per call via x402 or Gateway nanopayments on Arc Testnet.
+            Paid API endpoints — pay per call via x402 or Gateway nanopayments on {networkConfig.label}.
           </p>
         </div>
         <Link
