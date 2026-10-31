@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Zap, Network, Lock, ExternalLink, CheckCircle,
+  Zap, Network, Lock, ExternalLink, CheckCircle, FileSearch,
   XCircle, Loader2, ArrowRight, Info,
 } from "lucide-react";
-import type { Service } from "@agetbazar/shared";
+import type { AuditReport, Service } from "@agetbazar/shared";
+import { AuditReportViewer, isAuditReport } from "@/components/AuditReportViewer";
 
 const EXPLORER = "https://explorer.testnet.arc.io";
 
@@ -44,7 +45,7 @@ const INVOKE_STEPS = [
   { key: "quote",     label: "Fetching service quote"          },
   { key: "auth",      label: "Signing x402 authorization"       },
   { key: "executing", label: "Executing paid request"           },
-  { key: "done",      label: "Settlement complete"              },
+  { key: "done",      label: "Service response received"         },
 ];
 
 type InvokeStep = "idle" | "quote" | "auth" | "executing" | "done" | "failed";
@@ -80,7 +81,10 @@ function InvokeModal({ service, onClose }: { service: Service; onClose: () => vo
   const [result,   setResult]   = useState<Record<string, unknown> | null>(null);
   const [error,    setError]    = useState<string | null>(null);
   const [txHash,   setTxHash]   = useState<string | null>(null);
+  const [showReport, setShowReport] = useState(false);
   const requiresSourceCode = service.endpointUrl.endsWith("/api/paid/audit");
+  const auditReport: AuditReport | null = isAuditReport(result?.data) ? result.data : null;
+  const paymentReceipt = result?.receipt as Record<string, string> | undefined;
   const loading = step !== "idle" && step !== "done" && step !== "failed";
 
   async function invoke() {
@@ -92,6 +96,7 @@ function InvokeModal({ service, onClose }: { service: Service; onClose: () => vo
     setError(null);
     setResult(null);
     setTxHash(null);
+    setShowReport(false);
     setStep("quote");
     await new Promise(r => setTimeout(r, 350));
     setStep("auth");
@@ -214,17 +219,34 @@ function InvokeModal({ service, onClose }: { service: Service; onClose: () => vo
               Settlement tx: {txHash.slice(0, 18)}…{txHash.slice(-8)}
             </a>
           )}
+          {step === "done" && paymentReceipt && (
+            <p className="text-xs text-slate-400">
+              Payment status: <span className="text-slate-200">{paymentReceipt.status === "settled" ? "settled" : "service returned; settlement not confirmed"}</span>
+            </p>
+          )}
 
           {/* Result */}
           {step === "done" && result && (
             <div className="rounded-xl bg-green-950/20 border border-green-700/40 p-4">
-              <p className="text-xs font-semibold text-green-400 mb-2">Service response</p>
+                  <p className="text-xs font-semibold text-green-400 mb-2">{auditReport ? "Audit completed" : "Service response"}</p>
               {typeof result.warning === "string" && (
                 <p className="text-xs text-amber-300 mb-2">{result.warning}</p>
               )}
-              <pre className="text-xs text-slate-300 overflow-auto max-h-40 whitespace-pre-wrap font-mono">
-                {JSON.stringify(result.data ?? result, null, 2)}
-              </pre>
+                  {auditReport ? (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">{auditReport.score}/100 · {auditReport.verdict.replaceAll("_", " ")}</p>
+                        <p className="mt-1 text-xs text-slate-400">{auditReport.findings.length} findings · {auditReport.summary}</p>
+                      </div>
+                      <button onClick={() => setShowReport(true)} className="inline-flex items-center gap-2 rounded-md border border-green-700/60 px-3 py-2 text-xs font-semibold text-green-200 hover:bg-green-900/30">
+                        <FileSearch className="h-4 w-4" /> View full report
+                      </button>
+                    </div>
+                  ) : (
+                    <pre className="text-xs text-slate-300 overflow-auto max-h-40 whitespace-pre-wrap font-mono">
+                      {JSON.stringify(result.data ?? result, null, 2)}
+                    </pre>
+                  )}
             </div>
           )}
 
@@ -258,6 +280,9 @@ function InvokeModal({ service, onClose }: { service: Service; onClose: () => vo
           </div>
         </div>
       </div>
+      {showReport && auditReport && (
+        <AuditReportViewer report={auditReport} sourceCode={sourceCode} onClose={() => setShowReport(false)} />
+      )}
     </div>
   );
 }

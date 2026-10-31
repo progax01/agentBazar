@@ -184,9 +184,10 @@ export async function invokeService(
   } catch (err) {
     const msg        = err instanceof Error ? err.message : String(err);
     const httpStatus = (err as { httpStatus?: number }).httpStatus ?? null;
+    console.error(`[PaymentRouter] Service request failed for payment ${paymentId} (HTTP ${httpStatus ?? "unknown"}): ${msg}`);
     await pool.query(
       `UPDATE service_payments
-         SET status='failed', error_message=$1, http_status=$2, settled_at=NOW()
+         SET status='failed', error_message=$1, http_status=$2, settled_at=NULL
        WHERE id=$3`,
       [msg, httpStatus, paymentId],
     );
@@ -197,7 +198,7 @@ export async function invokeService(
   const receipt    = invokeResult.receipt;
   const txHash     = receipt?.transactionHash ?? null;
   const finalStatus: ServicePaymentStatus =
-    txHash ? "settled" : receipt?.status === "payment_verified" ? "payment_verified" : "executing";
+    txHash || receipt?.status === "settled" ? "settled" : receipt?.status === "payment_verified" ? "payment_verified" : "executing";
 
   let warning: string | undefined;
   try {

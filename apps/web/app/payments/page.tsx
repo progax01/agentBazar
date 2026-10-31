@@ -5,7 +5,15 @@ import Link from "next/link";
 import { Loader2, ExternalLink, ArrowLeft, ArrowRight, Coins } from "lucide-react";
 import type { ServicePayment } from "@agetbazar/shared";
 
-const EXPLORER = "https://explorer.testnet.arc.io";
+const PIPELINE = [
+  { key: "pending", label: "Pending" },
+  { key: "quote_received", label: "Quoted" },
+  { key: "authorization_created", label: "Authorized" },
+  { key: "payment_verified", label: "Payment verified" },
+  { key: "executing", label: "Executing service" },
+  { key: "response_received", label: "Response received" },
+  { key: "settled", label: "Settled" },
+];
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
   pending:               { label: "Pending",    cls: "text-slate-400  bg-slate-700/40 border-slate-600"      },
@@ -19,26 +27,39 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   failed:                { label: "Failed",     cls: "text-red-400    bg-red-500/10 border-red-500/30"       },
 };
 
-const PIPELINE = ["pending","quote_received","authorization_created","payment_verified","executing","settled"];
-
 const MODE_CLS: Record<string, string> = {
   x402:                "bg-violet-500/15 text-violet-300 border-violet-500/30",
   gateway_nanopayment: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
   escrow:              "bg-amber-500/15 text-amber-300 border-amber-500/30",
 };
 
-function PaymentStatusBadge({ status }: { status: string }) {
+function PaymentStatusBadge({ status, label }: { status: string; label?: string }) {
   const m = STATUS_META[status] ?? { label: status, cls: "text-slate-400 bg-slate-700 border-slate-600" };
   return (
     <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${m.cls}`}>
-      {m.label}
+      {label ?? m.label}
     </span>
   );
 }
 
 function PaymentRow({ p }: { p: ServicePayment }) {
   const amount = (parseInt(p.amountRaw) / 1_000_000).toFixed(4);
-  const curPipelineIdx = PIPELINE.indexOf(p.status);
+  const steps = p.status === "failed"
+    ? [...PIPELINE, { key: "failed", label: "Failed" }]
+    : PIPELINE;
+  let currentStep = p.status === "failed" ? -1 : steps.findIndex(({ key }) => key === p.status);
+  const responseReceived = p.httpStatus === 200 && p.status !== "failed";
+  if (responseReceived) {
+    currentStep = Math.max(currentStep, steps.findIndex(({ key }) => key === "response_received"));
+  }
+  const displayStatus = p.status === "payment_verified" && responseReceived
+    ? "Response received · settlement not confirmed"
+    : STATUS_META[p.status]?.label ?? p.status;
+  const explorer = p.network === "eip155:5042"
+    ? "https://explorer.arc.network"
+    : p.network === "eip155:5042002"
+    ? "https://explorer.testnet.arc.io"
+    : null;
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 space-y-3 hover:border-slate-700 transition-colors">
@@ -47,14 +68,14 @@ function PaymentRow({ p }: { p: ServicePayment }) {
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-white text-sm truncate">{p.serviceName ?? p.serviceId}</span>
-            <PaymentStatusBadge status={p.status} />
+            <PaymentStatusBadge status={p.status} label={displayStatus} />
             <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${MODE_CLS[p.paymentMode] ?? "bg-slate-700 text-slate-300 border-slate-600"}`}>
               {p.paymentMode === "gateway_nanopayment" ? "Gateway" : p.paymentMode}
             </span>
           </div>
           <p className="text-xs text-slate-500">
             {new Date(p.createdAt).toLocaleString()}
-            {p.settledAt && <> · settled {new Date(p.settledAt).toLocaleString()}</>}
+            {p.status === "settled" && p.settledAt && <> · settled {new Date(p.settledAt).toLocaleString()}</>}
           </p>
         </div>
         <div className="text-right flex-shrink-0">
@@ -83,16 +104,16 @@ function PaymentRow({ p }: { p: ServicePayment }) {
 
       {/* Pipeline dots */}
       <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
-        {PIPELINE.map((key, i) => {
-          const done   = p.status === "settled" || curPipelineIdx >= i;
-          const isFail = p.status === "failed"  && i === curPipelineIdx;
+        {steps.map(({ key, label }, i) => {
+          const isFail = p.status === "failed" && key === "failed";
+          const done   = p.status !== "failed" && currentStep >= i;
           return (
             <div key={key} className="flex items-center gap-1 flex-shrink-0">
               {i > 0 && (
                 <div className={`h-px w-5 ${done ? "bg-violet-500" : "bg-slate-700"}`} />
               )}
               <div
-                title={STATUS_META[key]?.label ?? key}
+                title={label}
                 className={`w-2 h-2 rounded-full ${
                   isFail  ? "bg-red-500"     :
                   done    ? "bg-violet-500"  : "bg-slate-700"
@@ -102,14 +123,14 @@ function PaymentRow({ p }: { p: ServicePayment }) {
           );
         })}
         <span className="text-[10px] text-slate-500 ml-2 whitespace-nowrap">
-          {STATUS_META[p.status]?.label ?? p.status}
+          {displayStatus}
         </span>
       </div>
 
       {/* Settlement tx */}
-      {p.txHash && (
+      {p.txHash && explorer && (
         <a
-          href={`${EXPLORER}/tx/${p.txHash}`}
+          href={`${explorer}/tx/${p.txHash}`}
           target="_blank" rel="noreferrer"
           className="inline-flex items-center gap-1.5 text-xs text-violet-400 hover:text-violet-300 transition-colors"
         >

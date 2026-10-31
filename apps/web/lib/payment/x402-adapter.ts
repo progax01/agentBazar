@@ -32,7 +32,7 @@ export class X402PaymentAdapter implements ServicePaymentAdapter {
 
     // Lazy-import to keep the server bundle lean.
     const { privateKeyToAccount } = await import("viem/accounts");
-    const { x402Client, wrapFetchWithPayment } =
+    const { x402Client, wrapFetchWithPayment, decodePaymentResponseHeader } =
       await import("@x402/fetch") as typeof import("@x402/fetch");
 
     // Use the buyer/client sub-path — NOT the root export which is the server scheme.
@@ -74,8 +74,18 @@ export class X402PaymentAdapter implements ServicePaymentAdapter {
 
     const httpStatus = res.status;
     if (!res.ok) {
+      let detail = "";
+      try {
+        const body = await res.clone().json() as Record<string, unknown>;
+        const reason = body.errorMessage ?? body.errorReason ?? body.error ?? body.message;
+        if (typeof reason === "string") detail = `: ${reason.slice(0, 500)}`;
+        else detail = `: ${JSON.stringify(body).slice(0, 500)}`;
+      } catch {
+        const text = await res.clone().text().catch(() => "");
+        if (text) detail = `: ${text.slice(0, 500)}`;
+      }
       throw Object.assign(
-        new Error(`Paid service returned ${httpStatus}`),
+        new Error(`Paid service returned ${httpStatus}${detail}`),
         { httpStatus },
       );
     }
@@ -83,9 +93,21 @@ export class X402PaymentAdapter implements ServicePaymentAdapter {
     const data = await res.json() as unknown;
 
     // Extract settlement evidence from response headers when available.
-    const txHash = res.headers.get("x-transaction-hash") ??
+    const paymentResponseHeader = res.headers.get("PAYMENT-RESPONSE") ??
+                                  res.headers.get("X-PAYMENT-RESPONSE");
+    let settlement: ReturnType<typeof decodePaymentResponseHeader> | undefined;
+    if (paymentResponseHeader) {
+      try {
+        settlement = decodePaymentResponseHeader(paymentResponseHeader);
+      } catch (err) {
+        console.warn("[X402PaymentAdapter] Could not decode PAYMENT-RESPONSE:", err);
+      }
+    }
+    const txHash = (settlement?.success ? settlement.transaction : undefined) ??
+                   res.headers.get("x-transaction-hash") ??
                    res.headers.get("x-payment-receipt")  ??
                    undefined;
+    const settled = settlement?.success === true || Boolean(txHash);
 
     const receipt: PaymentReceipt = {
       mode:            "x402",
@@ -94,7 +116,7 @@ export class X402PaymentAdapter implements ServicePaymentAdapter {
       payerAddress:    signer.address,
       payToAddress:    res.headers.get("x-pay-to") ?? undefined,
       transactionHash: txHash ?? undefined,
-      status:          txHash ? "settled" : "payment_verified",
+      status:          settled ? "settled" : "payment_verified",
       facilitator:     "facilitator.arcusnetwork.co",
     };
 
