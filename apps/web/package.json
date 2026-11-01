@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 5173",
-    "build": "next build",
-    "start": "next start --port 5173",
+    "dev": "node init && next dev --port 5173",
+    "build": "node init && next build",
+    "start": "node init && next start --port 5173",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "migrate": "bun run lib/db/migrate.ts"

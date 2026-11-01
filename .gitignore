@@ -12,8 +12,6 @@ contracts/out/
 contracts/cache/
 
 # Environment secrets — never commit these
-.env
-.env.local
 .env.*.local
 !.env.example
 
@@ -25,3 +23,4 @@ contracts/cache/
 *.log
 .vercel
 .turbo
+config.bat

@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "dev:x402": "bun --watch src/x402-server.ts",
-    "start": "bun src/index.ts",
-    "start:x402": "bun src/x402-server.ts",
+    "dev": "node init && bun --watch src/index.ts",
+    "dev:x402": "node init && bun --watch src/x402-server.ts",
+    "start": "node init && bun src/index.ts",
+    "start:x402": "node init && bun src/x402-server.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
