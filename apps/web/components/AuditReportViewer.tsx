@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   Activity, Bot, CheckCircle2, Code2, ExternalLink, FileSearch,
-  ShieldAlert, X, XCircle,
+  ShieldAlert, X,
 } from "lucide-react";
 import type { AuditReport, AuditSeverity } from "@agetbazar/shared";
 
